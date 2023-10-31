@@ -1,2 +1,2 @@
-# GPUDriven
-GPU driven pipeline.
+# VulkanDemos
+VulkanDemos

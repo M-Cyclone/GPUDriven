@@ -1,0 +1,7 @@
+.*
+*.[oad]
+!.gitignore
+!.clang-format
+*~
+build
+src/shader/bin/*

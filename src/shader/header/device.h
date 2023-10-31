@@ -1,0 +1,1 @@
+#define OUT_COLOR_LOCATION 0
