@@ -5,7 +5,7 @@
 #include <string>
 
 #include "vk/descriptorsets.h"
-#include "vk/error_vk.hpp"
+#include "vk/error_vk.h"
 #include "vk/pipeline.h"
 #include "vk/render_pass.h"
 

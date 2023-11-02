@@ -1,6 +1,6 @@
 #include "render_pass.h"
 
-#include "error_vk.hpp"
+#include "error_vk.h"
 
 namespace nvvk
 {
