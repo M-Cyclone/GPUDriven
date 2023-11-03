@@ -1,17 +1,21 @@
+#include <cstdlib>
 #include <iostream>
 #include <stdexcept>
 
 #include "core/app.h"
 
+#include "utils/log.h"
+
 int main()
 {
     try
     {
+        Log::init();
         App{}.run();
     }
     catch (std::exception& e)
     {
-        std::cerr << "[Statard Exception]\n" << e.what() << std::endl;
+        LogError("[Statard Exception] {}.", e.what());
         std::system("pause");
         return -1;
     }

@@ -4,4 +4,5 @@
 !.clang-format
 *~
 build
-src/shader/bin/*
+shader/bin/*
+*.log

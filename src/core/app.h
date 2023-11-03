@@ -1,11 +1,15 @@
 #pragma once
 #include <memory>
+#include <stdint.h>
 #include <vector>
 
-struct SDL_Window;
+#include <vulkan/vulkan.h>
 
-class Context;
-class DescriptorSetContainer;
+#include "vk/device.h"
+#include "vk/swapchain.h"
+#include "vk/descriptorsets.h"
+
+struct GLFWwindow;
 
 class App
 {
@@ -21,18 +25,47 @@ public:
     void run();
 
 private:
-    void init();
-    void update();
-    void render();
-    void exit();
-
-private:
     void onResize(uint32_t width, uint32_t height);
 
 private:
-    std::unique_ptr<SDL_Window, void (*)(SDL_Window*)> m_window;
+    void init();
+    void exit();
 
-    std::unique_ptr<Context> m_ctx;
+    void update();
+    void render();
 
-    bool m_is_running = true;
+private:
+    void createGraphicsPipeline();
+    void destroyGraphicsPipeline();
+
+    void createFramebuffer();
+    void destroyFramebuffer();
+
+    void createCmdPoolAndAllocateBuffer();
+    void destroyCmdPoolAndDeallocateBuffer();
+
+    void createSyncObjects();
+    void destroySyncObjects();
+
+private:
+    std::unique_ptr<GLFWwindow, void (*)(GLFWwindow*)> m_window;
+
+    Device    m_device;
+    Swapchain m_swapchain;
+
+    VkRenderPass               m_render_pass;
+    std::vector<VkFramebuffer> m_framebuffers;
+
+    std::unique_ptr<nvvk::DescriptorSetContainer> m_dset;
+    VkPipeline                                    m_pipeline;
+
+    VkCommandPool                m_cmd_pool;
+    std::vector<VkCommandBuffer> m_cmds;
+    std::vector<VkSemaphore>     m_img_draw_finished_semaphores;
+    std::vector<VkSemaphore>     m_img_available_semaphores;
+    std::vector<VkFence>         m_cmd_available_fences;
+
+    uint32_t m_curr_frame_idx = 0;
+
+    uint8_t m_is_running : 1 = true;
 };

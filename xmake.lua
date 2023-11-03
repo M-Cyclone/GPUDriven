@@ -1,45 +1,126 @@
-set_project("gpu_driven")
+set_config("toolchain", "clang-cl")
+add_rules("mode.release", "mode.debug")
+option("is_clang")
+add_csnippets("is_clang", "return (__clang__)?0:-1;", {
+    tryrun = true
+})
+option_end()
+option("is_msvc")
+add_csnippets("is_msvc", "return (_MSC_VER)?0:-1;", {
+    tryrun = true
+})
+option_end()
 
-set_arch("x64")
-set_warnings("all")
-set_languages("cxx20")
-set_toolchains("clang")
+function GetValue(funcOrValue)
+    if type(funcOrValue) == 'function' then
+        return funcOrValue()
+    else
+        return funcOrValue
+    end
+end
 
-add_rules("mode.debug", "mode.releasedbg", "mode.release")
 
-add_requires("vulkansdk")
-add_requires("libsdl")
-add_requires("glm")
-add_requires("spdlog")
-add_requires("stb")
-add_requires("vulkan-memory-allocator")
--- add_requires("eastl")
--- add_requires("mimalloc")
+if is_mode("debug") then
+    set_targetdir("build/bin/debug")
+else
+    set_targetdir("build/bin/release")
+end
 
-target("gpu_driven")
-    set_default(true)
-    set_kind("binary")
-    
-    add_cxflags("-Wall", "-Werror", "-ffast-math")
+--[[
+    BuildProject({
+        projectName = xxx,
+        projectType = xxx,
+        unityBuildBatch = n,
+        exception = true/false,
+        releaseEvent = function()
+        end,
+        debugEvent = function()
+        end
+    })
+]]
+function BuildProject(config) 
+    local projectName = GetValue(config.projectName)
+    if projectName == nil then
+        return
+    end
+    target(projectName)
+    set_languages("clatest", "cxx20")
 
-    add_packages("vulkansdk")
-    add_packages("libsdl")
-    add_packages("glm")
-    add_packages("spdlog")
-    add_packages("stb")
-    add_packages("vulkan-memory-allocator")
-    -- add_packages("eastl")
-    -- add_packages("mimalloc")
-    
-    add_includedirs("src")
-    add_files(
-        "src/core/*.cpp",
-        "src/extern_impl/*.cpp",
-        "src/vk/*.cpp")    
-    add_headerfiles(
-        "src/core/*.h",
-        "src/shader/header/*.h",
-        "src/utils/*.h",
-        "src/vk/*.h")
+    local projectType = GetValue(config.projectType)
+    if projectType ~= nil then
+        set_kind(projectType)
+    end
 
-    set_rundir("$(projectdir)")
+    if UseUnityBuild then
+        local unityBuildBatch = GetValue(config.unityBuildBatch)
+        if (unityBuildBatch ~= nil) and (unityBuildBatch > 1) then
+            add_rules("c.unity_build", {
+                batchsize = unityBuildBatch
+            })
+            add_rules("c++.unity_build", {
+                batchsize = unityBuildBatch
+            })
+        end
+    end
+
+    local value = GetValue(config.exception)
+    if (value ~= nil) and value then
+        if has_config("is_msvc") then
+            add_cxflags("/EHsc")
+        else
+            add_cxflags("-fexceptions")
+        end
+    elseif not has_config("is_msvc") then
+        add_cxflags("-fno-exceptions")
+    end
+
+    set_warnings("all")
+    set_warnings("error")
+
+    if is_plat("windows") then
+        add_defines("PLATFORM_WINDOWS")
+    end
+
+    if is_mode("debug") then
+        set_optimize("none")
+        
+        if is_plat("windows") then
+            set_runtimes("MDd")
+        end
+
+        if has_config("is_msvc") then
+            add_cxflags("/GS", "/Gd");
+            -- Not Clang-cl
+            if not has_config("is_clang") then
+                add_cxflags("/Zc:preprocessor")
+            end
+        end
+        
+        local event = GetValue(config.debugEvent)
+        if (type(event) == "function") then
+            event()
+        end
+    else
+        set_optimize("fastest")
+
+        if is_plat("windows") then
+            set_runtimes("MD")
+        end
+
+        if has_config("is_msvc") then
+            -- add_cxflags("/Oy", "/GS-", "/Gd", "/Oi", "/Ot", "/GT", "/Ob2")
+            add_cxflags("/Oy", "/GS-", "/Gd", "/Oi", "/Ot", "/Ob2")
+            -- Not Clang-cl
+            if not has_config("is_clang") then
+                add_cxflags("/GL", "/Zc:preprocessor", "/QIntel-jcc-erratum")
+            end
+        end
+
+        local event = GetValue(config.releaseEvent)
+        if (type(event) == "function") then
+            event()
+        end
+    end
+end
+
+includes("src")

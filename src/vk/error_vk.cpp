@@ -20,6 +20,8 @@
 
 #include "error_vk.h"
 
+#include "utils/log.h"
+
 namespace nvvk
 {
 
@@ -93,11 +95,11 @@ bool checkResult(VkResult result, const char* message)
     {
         if (message)
         {
-            std::printf("VkResult %d - %s - %s\n", result, getResultString(result), message);
+            LogError("VkResult {} - {} - {}.", result, getResultString(result), message);
         }
         else
         {
-            std::printf("VkResult %d - %s\n", result, getResultString(result));
+            LogError("VkResult {} - {}.", result, getResultString(result));
         }
         assert(!"Critical Vulkan Error");
         return true;
@@ -123,7 +125,7 @@ bool checkResult(VkResult result, const char* file, int32_t line)
 
     if (result < 0)
     {
-        std::printf("%s(%d): Vulkan Error : %s\n", file, line, getResultString(result));
+        LogError("{}({}): Vulkan Error : {}.", file, line, getResultString(result));
         assert(!"Critical Vulkan Error");
 
         return true;
@@ -131,4 +133,5 @@ bool checkResult(VkResult result, const char* file, int32_t line)
 
     return false;
 }
+
 }  // namespace nvvk

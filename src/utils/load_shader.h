@@ -8,7 +8,7 @@
 
 inline std::string& getShaderSearchPath()
 {
-    static std::string search_path = "src/shader/bin";
+    static std::string search_path = "shader/bin";
     return search_path;
 }
 

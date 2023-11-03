@@ -137,8 +137,8 @@ struct GraphicsPipelineState
     }
 
     static inline VkPipelineColorBlendAttachmentState makePipelineColorBlendAttachmentState(
-        VkColorComponentFlags colorWriteMask_ = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
-                                                VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT,
+        VkColorComponentFlags colorWriteMask_ = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT |
+                                                VK_COLOR_COMPONENT_A_BIT,
         VkBool32      blendEnable_         = 0,
         VkBlendFactor srcColorBlendFactor_ = VK_BLEND_FACTOR_ZERO,
         VkBlendFactor dstColorBlendFactor_ = VK_BLEND_FACTOR_ZERO,
@@ -160,8 +160,9 @@ struct GraphicsPipelineState
         return res;
     }
 
-    static inline VkVertexInputBindingDescription
-    makeVertexInputBinding(uint32_t binding, uint32_t stride, VkVertexInputRate rate = VK_VERTEX_INPUT_RATE_VERTEX)
+    static inline VkVertexInputBindingDescription makeVertexInputBinding(uint32_t          binding,
+                                                                         uint32_t          stride,
+                                                                         VkVertexInputRate rate = VK_VERTEX_INPUT_RATE_VERTEX)
     {
         VkVertexInputBindingDescription vertexBinding;
         vertexBinding.binding   = binding;
@@ -222,10 +223,7 @@ struct GraphicsPipelineState
 
 
     void clearBindingDescriptions() { bindingDescriptions.clear(); }
-    void setBindingDescriptionsCount(uint32_t bindingDescriptionCount)
-    {
-        bindingDescriptions.resize(bindingDescriptionCount);
-    }
+    void setBindingDescriptionsCount(uint32_t bindingDescriptionCount) { bindingDescriptions.resize(bindingDescriptionCount); }
     void setBindingDescription(uint32_t binding, VkVertexInputBindingDescription bindingDescription)
     {
         assert(binding < bindingDescriptions.size());
@@ -247,10 +245,7 @@ struct GraphicsPipelineState
     }
 
     void clearAttributeDescriptions() { attributeDescriptions.clear(); }
-    void setAttributeDescriptionsCount(uint32_t attributeDescriptionCount)
-    {
-        attributeDescriptions.resize(attributeDescriptionCount);
-    }
+    void setAttributeDescriptionsCount(uint32_t attributeDescriptionCount) { attributeDescriptions.resize(attributeDescriptionCount); }
 
     void setAttributeDescription(uint32_t attribute, const VkVertexInputAttributeDescription& attributeDescription)
     {
@@ -270,9 +265,7 @@ struct GraphicsPipelineState
 
     void addAttributeDescriptions(const std::vector<VkVertexInputAttributeDescription>& attributeDescriptions_)
     {
-        attributeDescriptions.insert(attributeDescriptions.end(),
-                                     attributeDescriptions_.begin(),
-                                     attributeDescriptions_.end());
+        attributeDescriptions.insert(attributeDescriptions.end(), attributeDescriptions_.begin(), attributeDescriptions_.end());
     }
 
 
@@ -310,24 +303,18 @@ struct GraphicsPipelineState
     }
 
 
-    VkPipelineInputAssemblyStateCreateInfo inputAssemblyState{
-        VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO
-    };
-    VkPipelineRasterizationStateCreateInfo rasterizationState{
-        VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO
-    };
-    VkPipelineMultisampleStateCreateInfo  multisampleState{ VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO };
-    VkPipelineDepthStencilStateCreateInfo depthStencilState{
-        VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO
-    };
-    VkPipelineViewportStateCreateInfo    viewportState{ VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO };
-    VkPipelineDynamicStateCreateInfo     dynamicState{ VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO };
-    VkPipelineColorBlendStateCreateInfo  colorBlendState{ VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO };
-    VkPipelineVertexInputStateCreateInfo vertexInputState{ VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO };
+    VkPipelineInputAssemblyStateCreateInfo inputAssemblyState = { VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO };
+    VkPipelineRasterizationStateCreateInfo rasterizationState = { VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO };
+    VkPipelineMultisampleStateCreateInfo   multisampleState   = { VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO };
+    VkPipelineDepthStencilStateCreateInfo  depthStencilState  = { VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO };
+    VkPipelineViewportStateCreateInfo      viewportState      = { VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO };
+    VkPipelineDynamicStateCreateInfo       dynamicState       = { VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO };
+    VkPipelineColorBlendStateCreateInfo    colorBlendState    = { VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO };
+    VkPipelineVertexInputStateCreateInfo   vertexInputState   = { VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO };
 
 private:
     std::vector<VkPipelineColorBlendAttachmentState> blendAttachmentStates{ makePipelineColorBlendAttachmentState() };
-    std::vector<VkDynamicState> dynamicStateEnables = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
+    std::vector<VkDynamicState>                      dynamicStateEnables = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
 
     std::vector<VkVertexInputBindingDescription>   bindingDescriptions;
     std::vector<VkVertexInputAttributeDescription> attributeDescriptions;
@@ -537,8 +524,7 @@ private:
     std::vector<VkShaderModule>                  temporaryModules;
     std::vector<VkFormat>                        dynamicRenderingColorFormats;
     GraphicsPipelineState&                       pipelineState;
-    PipelineRenderingCreateInfo dynamicRenderingInfo{ VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO };
-
+    PipelineRenderingCreateInfo                  dynamicRenderingInfo = { VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO };
 
     void init()
     {
