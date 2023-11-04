@@ -11,11 +11,16 @@
 #    include <GLFW/glfw3native.h>
 #endif  // PLATFORM_WINDOWS
 
+#include <glm/glm.hpp>
+
 #include "vk/error_vk.h"
 #include "vk/pipeline.h"
 #include "vk/render_pass.h"
 
 #include "utils/load_shader.h"
+
+#include "shader_header/device.h"
+#include "shader_header/vertex_info.h"
 
 bool g_init_app = false;
 
@@ -125,11 +130,15 @@ void App::init()
     createCmdPoolAndAllocateBuffer();
 
     createSyncObjects();
+
+    createVertexBuffer();
 }
 
 void App::exit()
 {
     vkDeviceWaitIdle(m_device.device());
+
+    destroyVertexBuffer();
 
     destroySyncObjects();
 
@@ -153,8 +162,27 @@ void App::createGraphicsPipeline()
     m_dset->initPool(1);
     m_dset->initPipeLayout();
 
+
+    VkVertexInputBindingDescription binding_desc{};
+    binding_desc.binding   = 0;
+    binding_desc.stride    = sizeof(Vertex);
+    binding_desc.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+
+    std::vector<VkVertexInputAttributeDescription> attribute_descs(2);
+    attribute_descs[0].location = LOCATION_VERTEX_IN_POSITION;
+    attribute_descs[0].binding  = 0;
+    attribute_descs[0].format   = VK_FORMAT_R32G32_SFLOAT;
+    attribute_descs[0].offset   = offsetof(Vertex, pos);
+    attribute_descs[1].location = LOCATION_VERTEX_IN_COLOR;
+    attribute_descs[1].binding  = 0;
+    attribute_descs[1].format   = VK_FORMAT_R32G32B32_SFLOAT;
+    attribute_descs[1].offset   = offsetof(Vertex, color);
+
     nvvk::GraphicsPipelineState pstate{};
     pstate.rasterizationState.cullMode = VK_CULL_MODE_NONE;
+    pstate.addBindingDescription(binding_desc);
+    pstate.addAttributeDescriptions(attribute_descs);
+
 
     nvvk::GraphicsPipelineGenerator pgen(m_device.device(), m_dset->getPipeLayout(), m_render_pass, pstate);
     pgen.addShader(loadShaderCode("test.vert.spv"), VK_SHADER_STAGE_VERTEX_BIT, "main");
@@ -275,6 +303,52 @@ void App::destroySyncObjects()
     }
 }
 
+void App::createVertexBuffer()
+{
+    const std::vector<Vertex> vertices = {
+        {{ +0.0f, -0.5f }, { 1.0f, 0.0f, 0.0f }},
+        {{ +0.5f, +0.5f }, { 0.0f, 1.0f, 0.0f }},
+        {{ -0.5f, +0.5f }, { 0.0f, 0.0f, 1.0f }}
+    };
+
+    VkBufferCreateInfo info    = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
+    info.pNext                 = nullptr;
+    info.flags                 = 0;
+    info.size                  = static_cast<VkDeviceSize>(sizeof(Vertex) * vertices.size());
+    info.usage                 = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+    info.sharingMode           = VK_SHARING_MODE_EXCLUSIVE;
+    info.queueFamilyIndexCount = 0;
+    info.pQueueFamilyIndices   = nullptr;
+
+    NVVK_CHECK(vkCreateBuffer(m_device.device(), &info, nullptr, &m_vertex_buffer));
+
+
+    VkMemoryRequirements mem_req;
+    vkGetBufferMemoryRequirements(m_device.device(), m_vertex_buffer, &mem_req);
+
+    VkMemoryAllocateInfo alloc_info = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
+    alloc_info.pNext                = nullptr;
+    alloc_info.allocationSize       = mem_req.size;
+    alloc_info.memoryTypeIndex =
+        m_device.findMemoryType(mem_req.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    NVVK_CHECK(vkAllocateMemory(m_device.device(), &alloc_info, nullptr, &m_vertex_buffer_memory));
+
+
+    NVVK_CHECK(vkBindBufferMemory(m_device.device(), m_vertex_buffer, m_vertex_buffer_memory, 0));
+
+
+    void* data;
+    NVVK_CHECK(vkMapMemory(m_device.device(), m_vertex_buffer_memory, 0, info.size, 0, &data));
+    std::memcpy(data, vertices.data(), (size_t)info.size);
+    vkUnmapMemory(m_device.device(), m_vertex_buffer_memory);
+}
+
+void App::destroyVertexBuffer()
+{
+    vkFreeMemory(m_device.device(), m_vertex_buffer_memory, nullptr);
+    vkDestroyBuffer(m_device.device(), m_vertex_buffer, nullptr);
+}
+
 void App::update()
 {}
 
@@ -328,6 +402,10 @@ void App::render()
 
             vkCmdSetViewport(cmd, 0, 1, &viewport);
             vkCmdSetScissor(cmd, 0, 1, &area);
+
+            VkBuffer     vertex_buffers[] = { m_vertex_buffer };
+            VkDeviceSize offsets[]       = { 0 };
+            vkCmdBindVertexBuffers(cmd, 0, 1, vertex_buffers, offsets);
 
             vkCmdDraw(cmd, 3, 1, 0, 0);
         }

@@ -392,3 +392,19 @@ auto Device::getUniqueQueueFamilyIndices() const -> std::vector<uint32_t>
     std::vector unique_queues(queues.begin(), queues.end());
     return unique_queues;
 }
+
+uint32_t Device::findMemoryType(uint32_t type_filter, VkMemoryPropertyFlags properties)
+{
+    VkPhysicalDeviceMemoryProperties mem_props;
+    vkGetPhysicalDeviceMemoryProperties(m_active_gpu, &mem_props);
+
+    for (uint32_t i = 0; i < mem_props.memoryTypeCount; i++)
+    {
+        if ((type_filter & (1 << i)) && ((mem_props.memoryTypes[i].propertyFlags & properties) == properties))
+        {
+            return i;
+        }
+    }
+
+    throw std::runtime_error("Failed to find suitable memory type.");
+}

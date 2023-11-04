@@ -1,10 +1,10 @@
 #pragma once
 #include <functional>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
 #include <vector>
-#include <memory>
 
 #include <vulkan/vulkan.h>
 
@@ -88,9 +88,11 @@ public:
     VkQueue          queueGraphics() const { return m_graphics_queue; }
     VkQueue          queuePresent() const { return m_present_queue; }
 
-    auto getUniqueQueueFamilyIndices() const -> std::vector<uint32_t>;
-    uint32_t       getQueueGraphicsIndex() const { return *m_queue_family_indices.graphics; }
-    uint32_t       getQueuePresentIndex() const { return *m_queue_family_indices.present; }
+    auto     getUniqueQueueFamilyIndices() const -> std::vector<uint32_t>;
+    uint32_t getQueueGraphicsIndex() const { return *m_queue_family_indices.graphics; }
+    uint32_t getQueuePresentIndex() const { return *m_queue_family_indices.present; }
+
+    uint32_t findMemoryType(uint32_t type_filter, VkMemoryPropertyFlags properties);
 
 private:
     // Vulkan configs.

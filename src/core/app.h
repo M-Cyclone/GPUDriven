@@ -47,6 +47,9 @@ private:
     void createSyncObjects();
     void destroySyncObjects();
 
+    void createVertexBuffer();
+    void destroyVertexBuffer();
+
 private:
     std::unique_ptr<GLFWwindow, void (*)(GLFWwindow*)> m_window;
 
@@ -66,6 +69,9 @@ private:
     std::vector<VkFence>         m_cmd_available_fences;
 
     uint32_t m_curr_frame_idx = 0;
+
+    VkBuffer m_vertex_buffer;
+    VkDeviceMemory m_vertex_buffer_memory;
 
     uint8_t m_is_running : 1 = true;
 };

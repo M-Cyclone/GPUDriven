@@ -3,10 +3,11 @@
 #extension GL_GOOGLE_include_directive : enable
 
 #include "device.h"
+#include "vertex_info.h"
 
-layout (location = OUT_COLOR_LOCATION) out vec4 out_color;
+layout (location = LOCATION_VERTEX_OUT_COLOR) in vec3 v_color;
 
-layout (location = 0) in vec3 v_color;
+layout (location = 0) out vec4 out_color;
 
 void main()
 {
