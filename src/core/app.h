@@ -50,6 +50,10 @@ private:
     void createVertexBuffer();
     void destroyVertexBuffer();
 
+    void createIndexBuffer();
+    void destroyIndexBuffer();
+
+public:
     VkCommandBuffer createTempCommandBuffer() const;
     void            submitAndWaitTempCommandBuffer(VkCommandBuffer cmd, VkQueue queue) const;
     void            freeTempCommandBuffer(VkCommandBuffer cmd) const;
@@ -74,8 +78,10 @@ private:
 
     uint32_t m_curr_frame_idx = 0;
 
-    VkBuffer m_vertex_buffer;
+    VkBuffer       m_vertex_buffer;
     VkDeviceMemory m_vertex_buffer_memory;
+    VkBuffer       m_index_buffer;
+    VkDeviceMemory m_index_buffer_memory;
 
     uint8_t m_is_running : 1 = true;
 };

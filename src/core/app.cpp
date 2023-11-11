@@ -132,12 +132,14 @@ void App::init()
     createSyncObjects();
 
     createVertexBuffer();
+    createIndexBuffer();
 }
 
 void App::exit()
 {
     vkDeviceWaitIdle(m_device.device());
 
+    destroyIndexBuffer();
     destroyVertexBuffer();
 
     destroySyncObjects();
@@ -306,7 +308,8 @@ void App::destroySyncObjects()
 void App::createVertexBuffer()
 {
     const std::vector<Vertex> vertices = {
-        {{ +0.0f, -0.5f }, { 1.0f, 0.0f, 0.0f }},
+        {{ -0.5f, -0.5f }, { 1.0f, 0.0f, 0.0f }},
+        {{ +0.5f, -0.5f }, { 0.0f, 1.0f, 1.0f }},
         {{ +0.5f, +0.5f }, { 0.0f, 1.0f, 0.0f }},
         {{ -0.5f, +0.5f }, { 0.0f, 0.0f, 1.0f }}
     };
@@ -351,6 +354,52 @@ void App::destroyVertexBuffer()
 {
     vkFreeMemory(m_device.device(), m_vertex_buffer_memory, nullptr);
     vkDestroyBuffer(m_device.device(), m_vertex_buffer, nullptr);
+}
+
+void App::createIndexBuffer()
+{
+    const std::vector<uint16_t> indices = { 0, 1, 2, 2, 3, 0 };
+
+
+    VkDeviceSize buffer_size = static_cast<VkDeviceSize>(sizeof(uint16_t) * indices.size());
+
+
+    VkBuffer       staging_buffer;
+    VkDeviceMemory staging_buffer_mem;
+    m_device.createBuffer(buffer_size,
+                          VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                          VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                          staging_buffer,
+                          staging_buffer_mem);
+
+    {
+        void* data = m_device.mapMemory(staging_buffer_mem, 0, buffer_size, 0);
+        std::memcpy(data, indices.data(), (size_t)buffer_size);
+        m_device.unmapMemory(staging_buffer_mem);
+    }
+
+
+    m_device.createBuffer(buffer_size,
+                          VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+                          VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+                          m_index_buffer,
+                          m_index_buffer_memory);
+
+
+    VkCommandBuffer cmd = createTempCommandBuffer();
+    m_device.copyBuffer(cmd, staging_buffer, m_index_buffer, buffer_size);
+    submitAndWaitTempCommandBuffer(cmd, m_device.queueGraphics());
+    freeTempCommandBuffer(cmd);
+
+
+    vkFreeMemory(m_device.device(), staging_buffer_mem, nullptr);
+    vkDestroyBuffer(m_device.device(), staging_buffer, nullptr);
+}
+
+void App::destroyIndexBuffer()
+{
+    vkFreeMemory(m_device.device(), m_index_buffer_memory, nullptr);
+    vkDestroyBuffer(m_device.device(), m_index_buffer, nullptr);
 }
 
 VkCommandBuffer App::createTempCommandBuffer() const
@@ -439,7 +488,9 @@ void App::render()
             VkDeviceSize offsets[]        = { 0 };
             vkCmdBindVertexBuffers(cmd, 0, 1, vertex_buffers, offsets);
 
-            vkCmdDraw(cmd, 3, 1, 0, 0);
+            vkCmdBindIndexBuffer(cmd, m_index_buffer, 0, VK_INDEX_TYPE_UINT16);
+
+            vkCmdDrawIndexed(cmd, 6, 1, 0, 0, 0);
         }
         vkCmdEndRenderPass(cmd);
     }
