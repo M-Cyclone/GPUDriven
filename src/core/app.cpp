@@ -32,7 +32,7 @@ App::App()
     glfwInit();
 
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-    //glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
+    // glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 
     {
         m_window.reset(
@@ -124,9 +124,9 @@ void App::init()
                                            VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 
     createFramebuffer();
-    
+
     createGraphicsPipeline();
-    
+
     createCmdPoolAndAllocateBuffer();
 
     createSyncObjects();
@@ -311,36 +311,40 @@ void App::createVertexBuffer()
         {{ -0.5f, +0.5f }, { 0.0f, 0.0f, 1.0f }}
     };
 
-    VkBufferCreateInfo info    = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
-    info.pNext                 = nullptr;
-    info.flags                 = 0;
-    info.size                  = static_cast<VkDeviceSize>(sizeof(Vertex) * vertices.size());
-    info.usage                 = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
-    info.sharingMode           = VK_SHARING_MODE_EXCLUSIVE;
-    info.queueFamilyIndexCount = 0;
-    info.pQueueFamilyIndices   = nullptr;
 
-    NVVK_CHECK(vkCreateBuffer(m_device.device(), &info, nullptr, &m_vertex_buffer));
+    VkDeviceSize buffer_size = static_cast<VkDeviceSize>(sizeof(Vertex) * vertices.size());
 
 
-    VkMemoryRequirements mem_req;
-    vkGetBufferMemoryRequirements(m_device.device(), m_vertex_buffer, &mem_req);
+    VkBuffer       staging_buffer;
+    VkDeviceMemory staging_buffer_mem;
+    m_device.createBuffer(buffer_size,
+                          VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                          VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                          staging_buffer,
+                          staging_buffer_mem);
 
-    VkMemoryAllocateInfo alloc_info = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
-    alloc_info.pNext                = nullptr;
-    alloc_info.allocationSize       = mem_req.size;
-    alloc_info.memoryTypeIndex =
-        m_device.findMemoryType(mem_req.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-    NVVK_CHECK(vkAllocateMemory(m_device.device(), &alloc_info, nullptr, &m_vertex_buffer_memory));
+    {
+        void* data = m_device.mapMemory(staging_buffer_mem, 0, buffer_size, 0);
+        std::memcpy(data, vertices.data(), (size_t)buffer_size);
+        m_device.unmapMemory(staging_buffer_mem);
+    }
 
 
-    NVVK_CHECK(vkBindBufferMemory(m_device.device(), m_vertex_buffer, m_vertex_buffer_memory, 0));
+    m_device.createBuffer(buffer_size,
+                          VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+                          VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+                          m_vertex_buffer,
+                          m_vertex_buffer_memory);
 
 
-    void* data;
-    NVVK_CHECK(vkMapMemory(m_device.device(), m_vertex_buffer_memory, 0, info.size, 0, &data));
-    std::memcpy(data, vertices.data(), (size_t)info.size);
-    vkUnmapMemory(m_device.device(), m_vertex_buffer_memory);
+    VkCommandBuffer cmd = createTempCommandBuffer();
+    m_device.copyBuffer(cmd, staging_buffer, m_vertex_buffer, buffer_size);
+    submitAndWaitTempCommandBuffer(cmd, m_device.queueGraphics());
+    freeTempCommandBuffer(cmd);
+
+
+    vkFreeMemory(m_device.device(), staging_buffer_mem, nullptr);
+    vkDestroyBuffer(m_device.device(), staging_buffer, nullptr);
 }
 
 void App::destroyVertexBuffer()
@@ -349,13 +353,41 @@ void App::destroyVertexBuffer()
     vkDestroyBuffer(m_device.device(), m_vertex_buffer, nullptr);
 }
 
+VkCommandBuffer App::createTempCommandBuffer() const
+{
+    VkCommandBufferAllocateInfo allo_iInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO };
+    allo_iInfo.level                       = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    allo_iInfo.commandPool                 = m_cmd_pool;
+    allo_iInfo.commandBufferCount          = 1;
+
+    VkCommandBuffer cmd;
+    NVVK_CHECK(vkAllocateCommandBuffers(m_device.device(), &allo_iInfo, &cmd));
+
+    return cmd;
+}
+
+void App::submitAndWaitTempCommandBuffer(VkCommandBuffer cmd, VkQueue queue) const
+{
+    VkSubmitInfo submitInfo       = { VK_STRUCTURE_TYPE_SUBMIT_INFO };
+    submitInfo.commandBufferCount = 1;
+    submitInfo.pCommandBuffers    = &cmd;
+
+    NVVK_CHECK(vkQueueSubmit(queue, 1, &submitInfo, VK_NULL_HANDLE));
+    NVVK_CHECK(vkQueueWaitIdle(queue));
+}
+
+void App::freeTempCommandBuffer(VkCommandBuffer cmd) const
+{
+    vkFreeCommandBuffers(m_device.device(), m_cmd_pool, 1, &cmd);
+}
+
 void App::update()
 {}
 
 void App::render()
 {
     VkDevice       device    = m_device.device();
-    VkSwapchainKHR swapchain = m_swapchain.get();
+    VkSwapchainKHR swapchain = m_swapchain.swapchain();
 
     constexpr uint64_t k_max_wait_time = std::numeric_limits<uint64_t>::max();
 
@@ -404,7 +436,7 @@ void App::render()
             vkCmdSetScissor(cmd, 0, 1, &area);
 
             VkBuffer     vertex_buffers[] = { m_vertex_buffer };
-            VkDeviceSize offsets[]       = { 0 };
+            VkDeviceSize offsets[]        = { 0 };
             vkCmdBindVertexBuffers(cmd, 0, 1, vertex_buffers, offsets);
 
             vkCmdDraw(cmd, 3, 1, 0, 0);

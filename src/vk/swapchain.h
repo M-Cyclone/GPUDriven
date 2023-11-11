@@ -23,7 +23,7 @@ public:
     void querySwapchainInfo(Device& device, uint32_t w, uint32_t h);
 
 public:
-    VkSwapchainKHR  get() const { return m_swapchain; }
+    VkSwapchainKHR swapchain() const { return m_swapchain; }
 
     VkFormat        getSurfaceFormat() const { return m_surface_format.format; }
     VkColorSpaceKHR getSurfaceColorSpace() const { return m_surface_format.colorSpace; }

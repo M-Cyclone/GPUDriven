@@ -50,6 +50,10 @@ private:
     void createVertexBuffer();
     void destroyVertexBuffer();
 
+    VkCommandBuffer createTempCommandBuffer() const;
+    void            submitAndWaitTempCommandBuffer(VkCommandBuffer cmd, VkQueue queue) const;
+    void            freeTempCommandBuffer(VkCommandBuffer cmd) const;
+
 private:
     std::unique_ptr<GLFWwindow, void (*)(GLFWwindow*)> m_window;
 

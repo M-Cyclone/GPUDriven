@@ -393,7 +393,7 @@ auto Device::getUniqueQueueFamilyIndices() const -> std::vector<uint32_t>
     return unique_queues;
 }
 
-uint32_t Device::findMemoryType(uint32_t type_filter, VkMemoryPropertyFlags properties)
+uint32_t Device::findMemoryType(uint32_t type_filter, VkMemoryPropertyFlags properties) const
 {
     VkPhysicalDeviceMemoryProperties mem_props;
     vkGetPhysicalDeviceMemoryProperties(m_active_gpu, &mem_props);
@@ -407,4 +407,64 @@ uint32_t Device::findMemoryType(uint32_t type_filter, VkMemoryPropertyFlags prop
     }
 
     throw std::runtime_error("Failed to find suitable memory type.");
+}
+
+void Device::createBuffer(VkDeviceSize          size,
+                          VkBufferUsageFlags    usage,
+                          VkMemoryPropertyFlags properties,
+                          VkBuffer&             buffer,
+                          VkDeviceMemory&       buffer_mem) const
+{
+    VkBufferCreateInfo buffer_info    = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
+    buffer_info.pNext                 = nullptr;
+    buffer_info.flags                 = 0;
+    buffer_info.size                  = size;
+    buffer_info.usage                 = usage;
+    buffer_info.sharingMode           = VK_SHARING_MODE_EXCLUSIVE;
+    buffer_info.queueFamilyIndexCount = 0;
+    buffer_info.pQueueFamilyIndices   = nullptr;
+
+    NVVK_CHECK(vkCreateBuffer(m_device, &buffer_info, nullptr, &buffer));
+
+
+    VkMemoryRequirements mem_requirements;
+    vkGetBufferMemoryRequirements(m_device, buffer, &mem_requirements);
+
+
+    VkMemoryAllocateInfo alloc_info = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
+    alloc_info.allocationSize       = mem_requirements.size;
+    alloc_info.memoryTypeIndex      = findMemoryType(mem_requirements.memoryTypeBits, properties);
+
+    NVVK_CHECK(vkAllocateMemory(m_device, &alloc_info, nullptr, &buffer_mem));
+
+
+    NVVK_CHECK(vkBindBufferMemory(m_device, buffer, buffer_mem, 0));
+}
+
+void Device::copyBuffer(VkCommandBuffer cmd, VkBuffer src, VkBuffer dst, VkDeviceSize size) const
+{
+    VkCommandBufferBeginInfo beginInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
+    beginInfo.flags                    = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+    NVVK_CHECK(vkBeginCommandBuffer(cmd, &beginInfo));
+    {
+        VkBufferCopy copyRegion{};
+        copyRegion.srcOffset = 0;  // Optional
+        copyRegion.dstOffset = 0;  // Optional
+        copyRegion.size      = size;
+        vkCmdCopyBuffer(cmd, src, dst, 1, &copyRegion);
+    }
+    NVVK_CHECK(vkEndCommandBuffer(cmd));
+}
+
+void* Device::mapMemory(VkDeviceMemory memory, VkDeviceSize offset, VkDeviceSize size, VkMemoryMapFlags flags) const
+{
+    void* data;
+    NVVK_CHECK(vkMapMemory(m_device, memory, offset, size, flags, &data));
+    return data;
+}
+
+void Device::unmapMemory(VkDeviceMemory memory) const
+{
+    vkUnmapMemory(m_device, memory);
 }

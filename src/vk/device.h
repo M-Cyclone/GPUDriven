@@ -92,7 +92,19 @@ public:
     uint32_t getQueueGraphicsIndex() const { return *m_queue_family_indices.graphics; }
     uint32_t getQueuePresentIndex() const { return *m_queue_family_indices.present; }
 
-    uint32_t findMemoryType(uint32_t type_filter, VkMemoryPropertyFlags properties);
+public:
+    uint32_t findMemoryType(uint32_t type_filter, VkMemoryPropertyFlags properties) const;
+
+    void createBuffer(VkDeviceSize          size,
+                      VkBufferUsageFlags    usage,
+                      VkMemoryPropertyFlags properties,
+                      VkBuffer&             buffer,
+                      VkDeviceMemory&       buffer_mem) const;
+
+    void* mapMemory(VkDeviceMemory memory, VkDeviceSize offset, VkDeviceSize size, VkMemoryMapFlags flags) const;
+    void  unmapMemory(VkDeviceMemory memory) const;
+
+    void copyBuffer(VkCommandBuffer cmd, VkBuffer src, VkBuffer dst, VkDeviceSize size) const;
 
 private:
     // Vulkan configs.
