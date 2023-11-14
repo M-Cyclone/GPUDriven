@@ -2,7 +2,7 @@
 #include <algorithm>
 
 #include "vk/device.h"
-#include "vk/error_vk.h"
+#include "vk/error.h"
 
 void Swapchain::init(Device& device)
 {

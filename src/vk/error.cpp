@@ -18,7 +18,7 @@
  */
 
 
-#include "error_vk.h"
+#include "vk/error.h"
 
 #include "utils/log.h"
 

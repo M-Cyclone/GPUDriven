@@ -10,8 +10,13 @@ layout (location = LOCATION_VERTEX_IN_COLOR)    in vec3 in_color;
 
 layout (location = LOCATION_VERTEX_OUT_COLOR) out vec3 v_color;
 
+layout (binding = BINDING_UBO) uniform UniformBufferObject_
+{
+    UniformBufferObject ubo;
+};
+
 void main()
 {
-    gl_Position = vec4(in_position, 0.0, 1.0);
+    gl_Position = ubo.proj * ubo.view * ubo.model * vec4(in_position, 0.0, 1.0);
     v_color     = in_color;
 }

@@ -1,6 +1,7 @@
 #include "core/app.h"
 #include <array>
 #include <cassert>
+#include <chrono>
 #include <stdexcept>
 
 #define GLFW_INCLUDE_VULKAN
@@ -11,9 +12,12 @@
 #    include <GLFW/glfw3native.h>
 #endif  // PLATFORM_WINDOWS
 
+#define GLM_FORCE_RADIANS
+#define GLM_FORCE_DEFAULT_ALIGNED_GENTYPES
 #include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 
-#include "vk/error_vk.h"
+#include "vk/error.h"
 #include "vk/pipeline.h"
 #include "vk/render_pass.h"
 
@@ -48,14 +52,14 @@ App::App()
         glfwSetWindowUserPointer(m_window.get(), this);
 
         glfwSetWindowCloseCallback(m_window.get(), [](GLFWwindow* wnd)
-        {
-            reinterpret_cast<App*>(glfwGetWindowUserPointer(wnd))->m_is_running = false;
-        });
+            {
+                reinterpret_cast<App*>(glfwGetWindowUserPointer(wnd))->m_is_running = false;
+            });
 
         glfwSetWindowSizeCallback(m_window.get(), [](GLFWwindow* wnd, int w, int h)
-        {
-            reinterpret_cast<App*>(glfwGetWindowUserPointer(wnd))->onResize(w, h);
-        });
+            {
+                reinterpret_cast<App*>(glfwGetWindowUserPointer(wnd))->onResize(w, h);
+            });
         // clang-format on
     }
 
@@ -73,12 +77,22 @@ void App::run()
 {
     init();
 
+    auto start = std::chrono::high_resolution_clock::now();
+    auto prev  = start;
+    
     while (m_is_running)
     {
         glfwPollEvents();
 
-        update();
+        auto  curr = std::chrono::high_resolution_clock::now();
+
+        float delta_time = std::chrono::duration<float, std::chrono::seconds::period>(curr - prev).count();
+        float total_time = std::chrono::duration<float, std::chrono::seconds::period>(curr - start).count();
+
+        update(delta_time, total_time);
         render();
+
+        prev = curr;
     }
 
     exit();
@@ -86,6 +100,11 @@ void App::run()
 
 void App::onResize(uint32_t width, uint32_t height)
 {
+    m_width        = width;
+    m_height       = height;
+    m_aspect_ratio = (float)width / (float)height;
+
+
     vkDeviceWaitIdle(m_device.device());
 
     destroyFramebuffer();
@@ -123,32 +142,40 @@ void App::init()
                                            VK_IMAGE_LAYOUT_UNDEFINED,
                                            VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 
+    using VET = vertex::AttributeType;
+    m_layout.append(VET::Pos2d);   // pos
+    m_layout.append(VET::Color3);  // color
+
+    m_alloc = std::make_unique<Allocator>(m_device);
+
+    createCmdPoolAndAllocateBuffer();
+
+    createVertexBuffer();
+    createIndexBuffer();
+    createUniformBuffers();
+
     createFramebuffer();
 
     createGraphicsPipeline();
 
-    createCmdPoolAndAllocateBuffer();
-
     createSyncObjects();
-
-    createVertexBuffer();
-    createIndexBuffer();
 }
 
 void App::exit()
 {
     vkDeviceWaitIdle(m_device.device());
 
-    destroyIndexBuffer();
-    destroyVertexBuffer();
-
     destroySyncObjects();
-
-    destroyCmdPoolAndDeallocateBuffer();
 
     destroyGraphicsPipeline();
 
     destroyFramebuffer();
+
+    destroyUniformBuffers();
+    destroyIndexBuffer();
+    destroyVertexBuffer();
+
+    destroyCmdPoolAndDeallocateBuffer();
 
     vkDestroyRenderPass(m_device.device(), m_render_pass, nullptr);
 
@@ -160,25 +187,34 @@ void App::exit()
 void App::createGraphicsPipeline()
 {
     m_dset = std::make_unique<nvvk::DescriptorSetContainer>(m_device.device());
+    m_dset->addBinding(BINDING_UBO, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_ALL);
     m_dset->initLayout();
-    m_dset->initPool(1);
+    m_dset->initPool(k_max_in_flight_count);
     m_dset->initPipeLayout();
 
 
+    for (uint32_t i = 0; i < k_max_in_flight_count; ++i)
+    {
+        VkDescriptorBufferInfo buffer_info{};
+        buffer_info.buffer = m_uniform_buffers[i].buffer;
+        buffer_info.offset = 0;
+        buffer_info.range  = sizeof(UniformBufferObject);
+
+        VkWriteDescriptorSet write = m_dset->makeWrite(i, BINDING_UBO, &buffer_info);
+        vkUpdateDescriptorSets(m_device.device(), 1, &write, 0, nullptr);
+    }
+
+
+    const uint32_t binding = 0;
+
     VkVertexInputBindingDescription binding_desc{};
-    binding_desc.binding   = 0;
-    binding_desc.stride    = sizeof(Vertex);
+    binding_desc.binding   = binding;
+    binding_desc.stride    = static_cast<uint32_t>(m_layout.getStride());
     binding_desc.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
 
-    std::vector<VkVertexInputAttributeDescription> attribute_descs(2);
-    attribute_descs[0].location = LOCATION_VERTEX_IN_POSITION;
-    attribute_descs[0].binding  = 0;
-    attribute_descs[0].format   = VK_FORMAT_R32G32_SFLOAT;
-    attribute_descs[0].offset   = offsetof(Vertex, pos);
-    attribute_descs[1].location = LOCATION_VERTEX_IN_COLOR;
-    attribute_descs[1].binding  = 0;
-    attribute_descs[1].format   = VK_FORMAT_R32G32B32_SFLOAT;
-    attribute_descs[1].offset   = offsetof(Vertex, color);
+    std::vector<VkVertexInputAttributeDescription> attribute_descs;
+    m_layout.getAttributeDescs(binding, attribute_descs);
+
 
     nvvk::GraphicsPipelineState pstate{};
     pstate.rasterizationState.cullMode = VK_CULL_MODE_NONE;
@@ -267,11 +303,9 @@ void App::destroyCmdPoolAndDeallocateBuffer()
 
 void App::createSyncObjects()
 {
-    const size_t count = m_swapchain.getSwapchainImageCount();
-
-    m_img_draw_finished_semaphores.resize(count);
-    m_img_available_semaphores.resize(count);
-    m_cmd_available_fences.resize(count);
+    m_img_draw_finished_semaphores.resize(k_max_in_flight_count);
+    m_img_available_semaphores.resize(k_max_in_flight_count);
+    m_cmd_available_fences.resize(k_max_in_flight_count);
 
     VkSemaphoreCreateInfo semaphore_info = { VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO };
     semaphore_info.pNext                 = nullptr;
@@ -281,7 +315,7 @@ void App::createSyncObjects()
     fence_info.pNext             = nullptr;
     fence_info.flags             = VK_FENCE_CREATE_SIGNALED_BIT;
 
-    for (uint32_t i = 0; i < count; ++i)
+    for (uint32_t i = 0; i < k_max_in_flight_count; ++i)
     {
         NVVK_CHECK(vkCreateSemaphore(m_device.device(), &semaphore_info, nullptr, &m_img_draw_finished_semaphores[i]));
         NVVK_CHECK(vkCreateSemaphore(m_device.device(), &semaphore_info, nullptr, &m_img_available_semaphores[i]));
@@ -307,99 +341,81 @@ void App::destroySyncObjects()
 
 void App::createVertexBuffer()
 {
-    const std::vector<Vertex> vertices = {
-        {{ -0.5f, -0.5f }, { 1.0f, 0.0f, 0.0f }},
-        {{ +0.5f, -0.5f }, { 0.0f, 1.0f, 1.0f }},
-        {{ +0.5f, +0.5f }, { 0.0f, 1.0f, 0.0f }},
-        {{ -0.5f, +0.5f }, { 0.0f, 0.0f, 1.0f }}
-    };
+    using VET = vertex::AttributeType;
+
+    vertex::Buffer vb(m_layout, 4);
+    vb[0].attr<VET::Pos2d>()  = { -0.5f, -0.5f };
+    vb[1].attr<VET::Pos2d>()  = { +0.5f, -0.5f };
+    vb[2].attr<VET::Pos2d>()  = { +0.5f, +0.5f };
+    vb[3].attr<VET::Pos2d>()  = { -0.5f, +0.5f };
+    vb[0].attr<VET::Color3>() = { 1.0f, 0.0f, 0.0f };
+    vb[1].attr<VET::Color3>() = { 0.0f, 1.0f, 1.0f };
+    vb[2].attr<VET::Color3>() = { 0.0f, 1.0f, 0.0f };
+    vb[3].attr<VET::Color3>() = { 0.0f, 0.0f, 1.0f };
+
+    m_vertex_buffer = m_alloc->createVertexBuffer(vb);
 
 
-    VkDeviceSize buffer_size = static_cast<VkDeviceSize>(sizeof(Vertex) * vertices.size());
-
-
-    VkBuffer       staging_buffer;
-    VkDeviceMemory staging_buffer_mem;
-    m_device.createBuffer(buffer_size,
-                          VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-                          VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                          staging_buffer,
-                          staging_buffer_mem);
-
+    Buffer staging_buffer = m_alloc->createStagingBuffer(vb.data());
     {
-        void* data = m_device.mapMemory(staging_buffer_mem, 0, buffer_size, 0);
-        std::memcpy(data, vertices.data(), (size_t)buffer_size);
-        m_device.unmapMemory(staging_buffer_mem);
+        VkCommandBuffer cmd = createTempCommandBuffer();
+        Allocator::copyBuffer(cmd, staging_buffer, m_vertex_buffer, vb.sizeOf());
+        submitAndWaitTempCommandBuffer(cmd, m_device.queueGraphics());
+        freeTempCommandBuffer(cmd);
     }
-
-
-    m_device.createBuffer(buffer_size,
-                          VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-                          VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-                          m_vertex_buffer,
-                          m_vertex_buffer_memory);
-
-
-    VkCommandBuffer cmd = createTempCommandBuffer();
-    m_device.copyBuffer(cmd, staging_buffer, m_vertex_buffer, buffer_size);
-    submitAndWaitTempCommandBuffer(cmd, m_device.queueGraphics());
-    freeTempCommandBuffer(cmd);
-
-
-    vkFreeMemory(m_device.device(), staging_buffer_mem, nullptr);
-    vkDestroyBuffer(m_device.device(), staging_buffer, nullptr);
+    m_alloc->destroyBuffer(staging_buffer);
 }
 
 void App::destroyVertexBuffer()
 {
-    vkFreeMemory(m_device.device(), m_vertex_buffer_memory, nullptr);
-    vkDestroyBuffer(m_device.device(), m_vertex_buffer, nullptr);
+    m_alloc->destroyBuffer(m_vertex_buffer);
 }
 
 void App::createIndexBuffer()
 {
     const std::vector<uint16_t> indices = { 0, 1, 2, 2, 3, 0 };
 
+    m_index_buffer = m_alloc->createIndexBuffer(indices);
 
-    VkDeviceSize buffer_size = static_cast<VkDeviceSize>(sizeof(uint16_t) * indices.size());
 
-
-    VkBuffer       staging_buffer;
-    VkDeviceMemory staging_buffer_mem;
-    m_device.createBuffer(buffer_size,
-                          VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-                          VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                          staging_buffer,
-                          staging_buffer_mem);
-
+    VkDeviceSize buffer_size    = static_cast<VkDeviceSize>(sizeof(uint16_t) * indices.size());
+    Buffer       staging_buffer = m_alloc->createStagingBuffer(buffer_size, indices.data());
     {
-        void* data = m_device.mapMemory(staging_buffer_mem, 0, buffer_size, 0);
-        std::memcpy(data, indices.data(), (size_t)buffer_size);
-        m_device.unmapMemory(staging_buffer_mem);
+        VkCommandBuffer cmd = createTempCommandBuffer();
+        Allocator::copyBuffer(cmd, staging_buffer, m_index_buffer, buffer_size);
+        submitAndWaitTempCommandBuffer(cmd, m_device.queueGraphics());
+        freeTempCommandBuffer(cmd);
     }
-
-
-    m_device.createBuffer(buffer_size,
-                          VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
-                          VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-                          m_index_buffer,
-                          m_index_buffer_memory);
-
-
-    VkCommandBuffer cmd = createTempCommandBuffer();
-    m_device.copyBuffer(cmd, staging_buffer, m_index_buffer, buffer_size);
-    submitAndWaitTempCommandBuffer(cmd, m_device.queueGraphics());
-    freeTempCommandBuffer(cmd);
-
-
-    vkFreeMemory(m_device.device(), staging_buffer_mem, nullptr);
-    vkDestroyBuffer(m_device.device(), staging_buffer, nullptr);
+    m_alloc->destroyBuffer(staging_buffer);
 }
 
 void App::destroyIndexBuffer()
 {
-    vkFreeMemory(m_device.device(), m_index_buffer_memory, nullptr);
-    vkDestroyBuffer(m_device.device(), m_index_buffer, nullptr);
+    m_alloc->destroyBuffer(m_index_buffer);
+}
+
+void App::createUniformBuffers()
+{
+    VkDeviceSize buffer_size = static_cast<VkDeviceSize>(sizeof(UniformBufferObject));
+
+    m_uniform_buffers.reserve(k_max_in_flight_count);
+    m_uniform_buffers_mapped.resize(k_max_in_flight_count);
+
+    for (size_t i = 0; i < k_max_in_flight_count; i++)
+    {
+        m_uniform_buffers.push_back(m_alloc->createUniformBuffer(buffer_size));
+
+        m_uniform_buffers_mapped[i] = m_device.mapMemory(m_uniform_buffers[i].memory, 0, buffer_size, 0);
+    }
+}
+
+void App::destroyUniformBuffers()
+{
+    for (size_t i = 0; i < k_max_in_flight_count; i++)
+    {
+        m_device.unmapMemory(m_uniform_buffers[i].memory);
+        m_alloc->destroyBuffer(m_uniform_buffers[i]);
+    }
 }
 
 VkCommandBuffer App::createTempCommandBuffer() const
@@ -430,13 +446,22 @@ void App::freeTempCommandBuffer(VkCommandBuffer cmd) const
     vkFreeCommandBuffers(m_device.device(), m_cmd_pool, 1, &cmd);
 }
 
-void App::update()
-{}
+void App::update(float delta_time, float total_time)
+{
+    UniformBufferObject ubo{};
+    ubo.model       = glm::rotate(glm::mat4(1.0f), total_time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+    ubo.view        = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+    ubo.proj        = glm::perspective(glm::radians(45.0f), m_aspect_ratio, 0.1f, 10.0f);
+    ubo.proj[1][1] *= -1;
+
+    std::memcpy(m_uniform_buffers_mapped[m_curr_frame_idx], &ubo, sizeof(ubo));
+}
 
 void App::render()
 {
     VkDevice       device    = m_device.device();
     VkSwapchainKHR swapchain = m_swapchain.swapchain();
+
 
     constexpr uint64_t k_max_wait_time = std::numeric_limits<uint64_t>::max();
 
@@ -479,16 +504,25 @@ void App::render()
         render_pass_begin.pClearValues    = &clear_value;
         vkCmdBeginRenderPass(cmd, &render_pass_begin, VK_SUBPASS_CONTENTS_INLINE);
         {
+            vkCmdBindDescriptorSets(cmd,
+                                    VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                    m_dset->getPipeLayout(),
+                                    0,
+                                    1,
+                                    m_dset->getSets(m_curr_frame_idx),
+                                    0,
+                                    nullptr);
+
             vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipeline);
 
             vkCmdSetViewport(cmd, 0, 1, &viewport);
             vkCmdSetScissor(cmd, 0, 1, &area);
 
-            VkBuffer     vertex_buffers[] = { m_vertex_buffer };
+            VkBuffer     vertex_buffers[] = { m_vertex_buffer.buffer };
             VkDeviceSize offsets[]        = { 0 };
             vkCmdBindVertexBuffers(cmd, 0, 1, vertex_buffers, offsets);
 
-            vkCmdBindIndexBuffer(cmd, m_index_buffer, 0, VK_INDEX_TYPE_UINT16);
+            vkCmdBindIndexBuffer(cmd, m_index_buffer.buffer, 0, VK_INDEX_TYPE_UINT16);
 
             vkCmdDrawIndexed(cmd, 6, 1, 0, 0, 0);
         }
@@ -523,5 +557,5 @@ void App::render()
     NVVK_CHECK(vkQueuePresentKHR(m_device.queuePresent(), &present_info));
 
 
-    m_curr_frame_idx = (m_curr_frame_idx + 1) % m_swapchain.getSwapchainImageCount();
+    m_curr_frame_idx = (m_curr_frame_idx + 1) % k_max_in_flight_count;
 }

@@ -1,6 +1,5 @@
 #pragma once
 #include <memory>
-#include <stdint.h>
 #include <vector>
 
 #include <vulkan/vulkan.h>
@@ -8,6 +7,10 @@
 #include "vk/device.h"
 #include "vk/swapchain.h"
 #include "vk/descriptorsets.h"
+
+#include "vk/vertex.h"
+#include "vk/resource.h"
+#include "vk/allocator.h"
 
 struct GLFWwindow;
 
@@ -17,6 +20,8 @@ private:
     inline static constexpr const char* k_window_title  = "GPU Driven";
     inline static constexpr uint32_t    k_window_width  = 1280;
     inline static constexpr uint32_t    k_window_height = 720;
+
+    inline static constexpr uint32_t k_max_in_flight_count = 2;
 
 public:
     App();
@@ -31,27 +36,30 @@ private:
     void init();
     void exit();
 
-    void update();
+    void update(float delta_time, float total_time);
     void render();
 
 private:
-    void createGraphicsPipeline();
-    void destroyGraphicsPipeline();
-
-    void createFramebuffer();
-    void destroyFramebuffer();
-
     void createCmdPoolAndAllocateBuffer();
     void destroyCmdPoolAndDeallocateBuffer();
-
-    void createSyncObjects();
-    void destroySyncObjects();
 
     void createVertexBuffer();
     void destroyVertexBuffer();
 
     void createIndexBuffer();
     void destroyIndexBuffer();
+
+    void createUniformBuffers();
+    void destroyUniformBuffers();
+
+    void createGraphicsPipeline();
+    void destroyGraphicsPipeline();
+
+    void createFramebuffer();
+    void destroyFramebuffer();
+
+    void createSyncObjects();
+    void destroySyncObjects();
 
 public:
     VkCommandBuffer createTempCommandBuffer() const;
@@ -60,6 +68,11 @@ public:
 
 private:
     std::unique_ptr<GLFWwindow, void (*)(GLFWwindow*)> m_window;
+
+    std::string m_title        = k_window_title;
+    uint32_t    m_width        = k_window_width;
+    uint32_t    m_height       = k_window_height;
+    float       m_aspect_ratio = 1.0f;
 
     Device    m_device;
     Swapchain m_swapchain;
@@ -78,10 +91,14 @@ private:
 
     uint32_t m_curr_frame_idx = 0;
 
-    VkBuffer       m_vertex_buffer;
-    VkDeviceMemory m_vertex_buffer_memory;
-    VkBuffer       m_index_buffer;
-    VkDeviceMemory m_index_buffer_memory;
+    std::unique_ptr<Allocator> m_alloc;
+
+    vertex::Layout m_layout;
+    Buffer         m_vertex_buffer;
+    Buffer         m_index_buffer;
+
+    std::vector<Buffer> m_uniform_buffers;
+    std::vector<void*>  m_uniform_buffers_mapped;
 
     uint8_t m_is_running : 1 = true;
 };
