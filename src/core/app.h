@@ -52,6 +52,9 @@ private:
     void createUniformBuffers();
     void destroyUniformBuffers();
 
+    void createTextureImageAndSampler();
+    void destroyTextureImageAndSampler();
+
     void createGraphicsPipeline();
     void destroyGraphicsPipeline();
 
@@ -99,6 +102,9 @@ private:
 
     std::vector<Buffer> m_uniform_buffers;
     std::vector<void*>  m_uniform_buffers_mapped;
+
+    Image     m_texture;
+    VkSampler m_sampler;
 
     uint8_t m_is_running : 1 = true;
 };

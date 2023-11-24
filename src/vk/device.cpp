@@ -195,6 +195,8 @@ void Device::createDevice()
 
     checkAvailableRequiredDeviceExtensions();
 
+    VkPhysicalDeviceFeatures device_features = { .samplerAnisotropy = VK_TRUE };
+
     VkDeviceCreateInfo info      = { VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO };
     info.pNext                   = nullptr;
     info.flags                   = 0;
@@ -204,7 +206,7 @@ void Device::createDevice()
     info.ppEnabledLayerNames     = nullptr;  // deprecated
     info.enabledExtensionCount   = static_cast<uint32_t>(m_enabled_device_extensions.size());
     info.ppEnabledExtensionNames = m_enabled_device_extensions.empty() ? nullptr : m_enabled_device_extensions.data();
-    info.pEnabledFeatures        = nullptr;
+    info.pEnabledFeatures        = &device_features;
     NVVK_CHECK(vkCreateDevice(m_active_gpu, &info, nullptr, &m_device));
 
     vkGetDeviceQueue(m_device, *m_queue_family_indices.graphics, 0, &m_graphics_queue);

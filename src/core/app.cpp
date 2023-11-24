@@ -17,6 +17,8 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
+#include <stb/stb_image.h>
+
 #include "vk/error.h"
 #include "vk/pipeline.h"
 #include "vk/render_pass.h"
@@ -143,8 +145,8 @@ void App::init()
                                            VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 
     using VET = vertex::AttributeType;
-    m_layout.append(VET::Pos2d);   // pos
-    m_layout.append(VET::Color3);  // color
+    m_layout.append(VET::Pos2d);      // pos
+    m_layout.append(VET::TexCoords);  // uv
 
     m_alloc = std::make_unique<Allocator>(m_device);
 
@@ -153,6 +155,7 @@ void App::init()
     createVertexBuffer();
     createIndexBuffer();
     createUniformBuffers();
+    createTextureImageAndSampler();
 
     createFramebuffer();
 
@@ -171,6 +174,7 @@ void App::exit()
 
     destroyFramebuffer();
 
+    destroyTextureImageAndSampler();
     destroyUniformBuffers();
     destroyIndexBuffer();
     destroyVertexBuffer();
@@ -188,6 +192,7 @@ void App::createGraphicsPipeline()
 {
     m_dset = std::make_unique<nvvk::DescriptorSetContainer>(m_device.device());
     m_dset->addBinding(BINDING_UBO, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_ALL);
+    m_dset->addBinding(BINDING_SAMPLER, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT);
     m_dset->initLayout();
     m_dset->initPool(k_max_in_flight_count);
     m_dset->initPipeLayout();
@@ -200,8 +205,15 @@ void App::createGraphicsPipeline()
         buffer_info.offset = 0;
         buffer_info.range  = sizeof(UniformBufferObject);
 
-        VkWriteDescriptorSet write = m_dset->makeWrite(i, BINDING_UBO, &buffer_info);
-        vkUpdateDescriptorSets(m_device.device(), 1, &write, 0, nullptr);
+        VkDescriptorImageInfo img_info{};
+        img_info.sampler     = m_sampler;
+        img_info.imageView   = m_texture.view;
+        img_info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+        std::vector<VkWriteDescriptorSet> writes;
+        writes.push_back(m_dset->makeWrite(i, BINDING_UBO, &buffer_info));
+        writes.push_back(m_dset->makeWrite(i, BINDING_SAMPLER, &img_info));
+        vkUpdateDescriptorSets(m_device.device(), (uint32_t)writes.size(), writes.data(), 0, nullptr);
     }
 
 
@@ -344,14 +356,14 @@ void App::createVertexBuffer()
     using VET = vertex::AttributeType;
 
     vertex::Buffer vb(m_layout, 4);
-    vb[0].attr<VET::Pos2d>()  = { -0.5f, -0.5f };
-    vb[1].attr<VET::Pos2d>()  = { +0.5f, -0.5f };
-    vb[2].attr<VET::Pos2d>()  = { +0.5f, +0.5f };
-    vb[3].attr<VET::Pos2d>()  = { -0.5f, +0.5f };
-    vb[0].attr<VET::Color3>() = { 1.0f, 0.0f, 0.0f };
-    vb[1].attr<VET::Color3>() = { 0.0f, 1.0f, 1.0f };
-    vb[2].attr<VET::Color3>() = { 0.0f, 1.0f, 0.0f };
-    vb[3].attr<VET::Color3>() = { 0.0f, 0.0f, 1.0f };
+    vb[0].attr<VET::Pos2d>()     = { -0.5f, -0.5f };
+    vb[1].attr<VET::Pos2d>()     = { +0.5f, -0.5f };
+    vb[2].attr<VET::Pos2d>()     = { +0.5f, +0.5f };
+    vb[3].attr<VET::Pos2d>()     = { -0.5f, +0.5f };
+    vb[0].attr<VET::TexCoords>() = { 1.0f, 0.0f };
+    vb[1].attr<VET::TexCoords>() = { 0.0f, 0.0f };
+    vb[2].attr<VET::TexCoords>() = { 0.0f, 1.0f };
+    vb[3].attr<VET::TexCoords>() = { 1.0f, 1.0f };
 
     m_vertex_buffer = m_alloc->createVertexBuffer(vb);
 
@@ -359,7 +371,7 @@ void App::createVertexBuffer()
     Buffer staging_buffer = m_alloc->createStagingBuffer(vb.data());
     {
         VkCommandBuffer cmd = createTempCommandBuffer();
-        Allocator::copyBuffer(cmd, staging_buffer, m_vertex_buffer, vb.sizeOf());
+        Allocator::copyBuffer(cmd, staging_buffer.buffer, m_vertex_buffer.buffer, vb.sizeOf());
         submitAndWaitTempCommandBuffer(cmd, m_device.queueGraphics());
         freeTempCommandBuffer(cmd);
     }
@@ -382,7 +394,7 @@ void App::createIndexBuffer()
     Buffer       staging_buffer = m_alloc->createStagingBuffer(buffer_size, indices.data());
     {
         VkCommandBuffer cmd = createTempCommandBuffer();
-        Allocator::copyBuffer(cmd, staging_buffer, m_index_buffer, buffer_size);
+        Allocator::copyBuffer(cmd, staging_buffer.buffer, m_index_buffer.buffer, buffer_size);
         submitAndWaitTempCommandBuffer(cmd, m_device.queueGraphics());
         freeTempCommandBuffer(cmd);
     }
@@ -418,6 +430,74 @@ void App::destroyUniformBuffers()
     }
 }
 
+void App::createTextureImageAndSampler()
+{
+    int width;
+    int height;
+    int channel;
+
+    stbi_uc* pixels = stbi_load("res/texture/texture.jpg", &width, &height, &channel, STBI_rgb_alpha);
+    assert(pixels);
+    VkDeviceSize imageSize      = static_cast<VkDeviceSize>(width * height * 4);
+    Buffer       staging_buffer = m_alloc->createStagingBuffer(imageSize, pixels);
+    stbi_image_free(pixels);
+
+    m_texture = m_alloc->createImage((uint32_t)width,
+                                     (uint32_t)height,
+                                     VK_FORMAT_R8G8B8A8_SRGB,
+                                     VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+                                     VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+                                     1);
+
+    {
+        VkCommandBuffer cmd = createTempCommandBuffer();
+
+        Allocator::transitionImageLayout(cmd, m_texture.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+
+        Allocator::copyBufferToImage(cmd, staging_buffer.buffer, m_texture.image, (uint32_t)width, (uint32_t)height);
+
+        Allocator::transitionImageLayout(cmd,
+                                         m_texture.image,
+                                         VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                                         VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+        submitAndWaitTempCommandBuffer(cmd, m_device.queueGraphics());
+    }
+
+    m_alloc->destroyBuffer(staging_buffer);
+
+
+    VkPhysicalDeviceProperties properties{};
+    vkGetPhysicalDeviceProperties(m_device.activeGPU(), &properties);
+
+    VkSamplerCreateInfo sampler_info     = { VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO };
+    sampler_info.pNext                   = nullptr;
+    sampler_info.flags                   = 0;
+    sampler_info.magFilter               = VK_FILTER_LINEAR;
+    sampler_info.minFilter               = VK_FILTER_LINEAR;
+    sampler_info.mipmapMode              = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+    sampler_info.addressModeU            = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    sampler_info.addressModeV            = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    sampler_info.addressModeW            = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    sampler_info.mipLodBias              = 0.0f;
+    sampler_info.anisotropyEnable        = VK_TRUE;
+    sampler_info.maxAnisotropy           = properties.limits.maxSamplerAnisotropy;
+    sampler_info.compareEnable           = VK_FALSE;
+    sampler_info.compareOp               = VK_COMPARE_OP_ALWAYS;
+    sampler_info.minLod                  = 0.0f;
+    sampler_info.maxLod                  = 0.0f;
+    sampler_info.borderColor             = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
+    sampler_info.unnormalizedCoordinates = VK_FALSE;
+
+    NVVK_CHECK(vkCreateSampler(m_device.device(), &sampler_info, nullptr, &m_sampler));
+}
+
+void App::destroyTextureImageAndSampler()
+{
+    vkDestroySampler(m_device.device(), m_sampler, nullptr);
+    m_alloc->destroyImage(m_texture);
+}
+
 VkCommandBuffer App::createTempCommandBuffer() const
 {
     VkCommandBufferAllocateInfo allo_iInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO };
@@ -428,11 +508,18 @@ VkCommandBuffer App::createTempCommandBuffer() const
     VkCommandBuffer cmd;
     NVVK_CHECK(vkAllocateCommandBuffers(m_device.device(), &allo_iInfo, &cmd));
 
+    VkCommandBufferBeginInfo beginInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
+    beginInfo.flags                    = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+    NVVK_CHECK(vkBeginCommandBuffer(cmd, &beginInfo));
+
     return cmd;
 }
 
 void App::submitAndWaitTempCommandBuffer(VkCommandBuffer cmd, VkQueue queue) const
 {
+    NVVK_CHECK(vkEndCommandBuffer(cmd));
+
     VkSubmitInfo submitInfo       = { VK_STRUCTURE_TYPE_SUBMIT_INFO };
     submitInfo.commandBufferCount = 1;
     submitInfo.pCommandBuffers    = &cmd;

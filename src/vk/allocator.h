@@ -25,9 +25,23 @@ public:
 
     Buffer createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties) const;
 
-    static void copyBuffer(VkCommandBuffer cmd, Buffer& src, Buffer& dst, VkDeviceSize size);
-
     void destroyBuffer(Buffer& buffer);
+
+    Image createImage(uint32_t              width,
+                      uint32_t              height,
+                      VkFormat              format,
+                      VkImageUsageFlags     usage,
+                      VkMemoryPropertyFlags properties,
+                      uint32_t              mip_level);
+    
+    void destroyImage(Image& image);
+
+public:
+    static void copyBuffer(VkCommandBuffer cmd, VkBuffer src, VkBuffer dst, VkDeviceSize size);
+
+    static void transitionImageLayout(VkCommandBuffer cmd, VkImage image, VkImageLayout old_layout, VkImageLayout new_layout);
+
+    static void copyBufferToImage(VkCommandBuffer cmd, VkBuffer src, VkImage dst, uint32_t width, uint32_t height);
 
     uint32_t findMemoryType(uint32_t type_filter, VkMemoryPropertyFlags properties) const;
 
