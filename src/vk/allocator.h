@@ -40,7 +40,11 @@ public:
 public:
     static void copyBuffer(VkCommandBuffer cmd, VkBuffer src, VkBuffer dst, VkDeviceSize size);
 
-    static void transitionImageLayout(VkCommandBuffer cmd, VkImage image, VkImageLayout old_layout, VkImageLayout new_layout);
+    static void transitionImageLayout(VkCommandBuffer cmd,
+                                      VkImage         image,
+                                      VkImageLayout   old_layout,
+                                      VkImageLayout   new_layout,
+                                      uint32_t        mip_levels);
 
     static void copyBufferToImage(VkCommandBuffer cmd, VkBuffer src, VkImage dst, uint32_t width, uint32_t height);
 

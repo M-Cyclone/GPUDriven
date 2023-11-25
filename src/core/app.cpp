@@ -162,6 +162,7 @@ void App::init()
     createVertexBuffer();
     createIndexBuffer();
     createUniformBuffers();
+
     createTextureImageAndSampler();
 
     createDepthBuffer();
@@ -186,6 +187,7 @@ void App::exit()
     destroyDepthBuffer();
 
     destroyTextureImageAndSampler();
+
     destroyUniformBuffers();
     destroyIndexBuffer();
     destroyVertexBuffer();
@@ -474,35 +476,140 @@ void App::destroyDepthBuffer()
 
 void App::createTextureImageAndSampler()
 {
-    int width;
-    int height;
-    int channel;
+    int w;
+    int h;
+    int c;
 
-    stbi_uc* pixels = stbi_load("res/texture/texture.jpg", &width, &height, &channel, STBI_rgb_alpha);
+    stbi_uc* pixels = stbi_load("res/texture/texture.jpg", &w, &h, &c, STBI_rgb_alpha);
     assert(pixels);
+
+    const uint32_t width  = (uint32_t)w;
+    const uint32_t height = (uint32_t)h;
+
     VkDeviceSize imageSize      = static_cast<VkDeviceSize>(width * height * 4);
     Buffer       staging_buffer = m_alloc->createStagingBuffer(imageSize, pixels);
     stbi_image_free(pixels);
 
-    m_texture = m_alloc->createImage((uint32_t)width,
-                                     (uint32_t)height,
+    uint32_t mip_levels = static_cast<uint32_t>(std::floor(std::log2(std::max(width, height)))) + 1;
+
+    m_texture = m_alloc->createImage(width,
+                                     height,
                                      VK_FORMAT_R8G8B8A8_SRGB,
-                                     VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+                                     VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
                                      VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
                                      VK_IMAGE_ASPECT_COLOR_BIT,
-                                     1);
+                                     mip_levels);
 
     {
         VkCommandBuffer cmd = createTempCommandBuffer();
 
-        Allocator::transitionImageLayout(cmd, m_texture.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+        Allocator::transitionImageLayout(cmd, m_texture.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, mip_levels);
 
-        Allocator::copyBufferToImage(cmd, staging_buffer.buffer, m_texture.image, (uint32_t)width, (uint32_t)height);
+        Allocator::copyBufferToImage(cmd, staging_buffer.buffer, m_texture.image, width, height);
 
-        Allocator::transitionImageLayout(cmd,
-                                         m_texture.image,
-                                         VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                                         VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        // Generator mipmap.
+        {
+            VkFormatProperties format_props;
+            vkGetPhysicalDeviceFormatProperties(m_device.activeGPU(), VK_FORMAT_R8G8B8A8_SRGB, &format_props);
+            if (!(format_props.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT))
+            {
+                throw std::runtime_error("texture image format does not support linear blitting!");
+            }
+
+
+            VkImageMemoryBarrier barrier = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
+            barrier.pNext                = nullptr;
+            barrier.srcQueueFamilyIndex  = VK_QUEUE_FAMILY_IGNORED;
+            barrier.dstQueueFamilyIndex  = VK_QUEUE_FAMILY_IGNORED;
+            barrier.image                = m_texture.image;
+            barrier.subresourceRange     = { .aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
+                                             .baseMipLevel   = 0,
+                                             .levelCount     = 1,
+                                             .baseArrayLayer = 0,
+                                             .layerCount     = 1 };
+
+            int32_t mip_w = width;
+            int32_t mip_h = height;
+
+            for (uint32_t i = 1; i < mip_levels; ++i)
+            {
+                // Transfer prev level image's layout.
+                barrier.subresourceRange.baseMipLevel = i - 1;
+                barrier.srcAccessMask                 = VK_ACCESS_TRANSFER_WRITE_BIT;
+                barrier.dstAccessMask                 = VK_ACCESS_TRANSFER_READ_BIT;
+                barrier.oldLayout                     = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+                barrier.newLayout                     = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+
+                vkCmdPipelineBarrier(cmd,
+                                     VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                     VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                     0,
+                                     0,
+                                     nullptr,
+                                     0,
+                                     nullptr,
+                                     1,
+                                     &barrier);
+
+
+                // Blit prev level image to curr level.
+                VkImageBlit blit = {
+                    .srcSubresource = { .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT, .mipLevel = i - 1, .baseArrayLayer = 0, .layerCount = 1 },
+                    .srcOffsets     = { { 0, 0, 0 }, { mip_w, mip_h, 1 } },
+                    .dstSubresource = { .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT, .mipLevel = i, .baseArrayLayer = 0, .layerCount = 1 },
+                    .dstOffsets     = { { 0, 0, 0 }, { std::max(mip_w / 2, 1), std::max(mip_h / 2, 1), 1 } }
+                };
+
+                vkCmdBlitImage(cmd,
+                               m_texture.image,
+                               VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                               m_texture.image,
+                               VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                               1,
+                               &blit,
+                               VK_FILTER_LINEAR);
+
+
+                // Transfer prev level image's layout to shader read only.
+                barrier.oldLayout     = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+                barrier.newLayout     = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+                barrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+                barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+
+                vkCmdPipelineBarrier(cmd,
+                                     VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                     VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                                     0,
+                                     0,
+                                     nullptr,
+                                     0,
+                                     nullptr,
+                                     1,
+                                     &barrier);
+
+                mip_w = std::max(mip_w / 2, 1);
+                mip_h = std::max(mip_h / 2, 1);
+            }
+
+            // Transfer the last level image layout.
+            barrier.subresourceRange.baseMipLevel = mip_levels - 1;
+            barrier.oldLayout                     = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+            barrier.newLayout                     = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            barrier.srcAccessMask                 = VK_ACCESS_TRANSFER_WRITE_BIT;
+            barrier.dstAccessMask                 = VK_ACCESS_SHADER_READ_BIT;
+
+            vkCmdPipelineBarrier(cmd,
+                                 VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                 VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                                 0,
+                                 0,
+                                 nullptr,
+                                 0,
+                                 nullptr,
+                                 1,
+                                 &barrier);
+        }
+
 
         submitAndWaitTempCommandBuffer(cmd, m_device.queueGraphics());
     }
@@ -528,7 +635,7 @@ void App::createTextureImageAndSampler()
     sampler_info.compareEnable           = VK_FALSE;
     sampler_info.compareOp               = VK_COMPARE_OP_ALWAYS;
     sampler_info.minLod                  = 0.0f;
-    sampler_info.maxLod                  = 0.0f;
+    sampler_info.maxLod                  = static_cast<float>(mip_levels);
     sampler_info.borderColor             = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
     sampler_info.unnormalizedCoordinates = VK_FALSE;
 

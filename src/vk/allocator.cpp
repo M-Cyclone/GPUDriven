@@ -136,7 +136,7 @@ Image Allocator::createImage(uint32_t              width,
                                         .a = VK_COMPONENT_SWIZZLE_IDENTITY };
     view_info.subresourceRange      = { .aspectMask     = aspect_flags,
                                         .baseMipLevel   = 0,
-                                        .levelCount     = 1,
+                                        .levelCount     = mip_level,
                                         .baseArrayLayer = 0,
                                         .layerCount     = 1 };
 
@@ -164,7 +164,11 @@ void Allocator::copyBuffer(VkCommandBuffer cmd, VkBuffer src, VkBuffer dst, VkDe
     vkCmdCopyBuffer(cmd, src, dst, 1, &copyRegion);
 }
 
-void Allocator::transitionImageLayout(VkCommandBuffer cmd, VkImage image, VkImageLayout old_layout, VkImageLayout new_layout)
+void Allocator::transitionImageLayout(VkCommandBuffer cmd,
+                                      VkImage         image,
+                                      VkImageLayout   old_layout,
+                                      VkImageLayout   new_layout,
+                                      uint32_t        mip_levels)
 {
     VkImageMemoryBarrier barrier = {
         .sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
@@ -178,7 +182,7 @@ void Allocator::transitionImageLayout(VkCommandBuffer cmd, VkImage image, VkImag
         .image               = image,
         .subresourceRange    = {.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
                                 .baseMipLevel   = 0,
-                                .levelCount     = 1,
+                                .levelCount     = mip_levels,
                                 .baseArrayLayer = 0,
                                 .layerCount     = 1}
     };
