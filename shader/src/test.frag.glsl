@@ -13,6 +13,5 @@ layout (location = 0) out vec4 out_color;
 
 void main()
 {
-    out_color = vec4(texture(tex_sampler, v_texcoords).rgb, 1.0);
-    // out_color = vec4(v_texcoords, 0.0, 1.0);
+    out_color = texture(tex_sampler, v_texcoords);
 }

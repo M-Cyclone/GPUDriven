@@ -14,6 +14,7 @@
 
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEFAULT_ALIGNED_GENTYPES
+#define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -110,11 +111,13 @@ void App::onResize(uint32_t width, uint32_t height)
     vkDeviceWaitIdle(m_device.device());
 
     destroyFramebuffer();
+    destroyDepthBuffer();
     m_swapchain.deinit(m_device);
 
 
     m_swapchain.querySwapchainInfo(m_device, width, height);
     m_swapchain.init(m_device);
+    createDepthBuffer();
     createFramebuffer();
 }
 
@@ -130,25 +133,29 @@ void App::init()
     m_device.addDeviceExtension(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
     m_device.init();
 
+    m_alloc = std::make_unique<Allocator>(m_device);
+
 
     m_swapchain.querySwapchainInfo(m_device, k_window_width, k_window_height);
     m_swapchain.init(m_device);
 
 
+    m_depth_format = m_alloc->findSupportedFormat({ VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT },
+                                                  VK_IMAGE_TILING_OPTIMAL,
+                                                  VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT);
+
     m_render_pass = nvvk::createRenderPass(m_device.device(),
                                            { m_swapchain.getSurfaceFormat() },
-                                           VK_FORMAT_UNDEFINED,
+                                           m_depth_format,
                                            1,
                                            true,
-                                           false,
+                                           true,
                                            VK_IMAGE_LAYOUT_UNDEFINED,
                                            VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 
     using VET = vertex::AttributeType;
-    m_layout.append(VET::Pos2d);      // pos
+    m_layout.append(VET::Pos3d);      // pos
     m_layout.append(VET::TexCoords);  // uv
-
-    m_alloc = std::make_unique<Allocator>(m_device);
 
     createCmdPoolAndAllocateBuffer();
 
@@ -156,6 +163,8 @@ void App::init()
     createIndexBuffer();
     createUniformBuffers();
     createTextureImageAndSampler();
+
+    createDepthBuffer();
 
     createFramebuffer();
 
@@ -173,6 +182,8 @@ void App::exit()
     destroyGraphicsPipeline();
 
     destroyFramebuffer();
+
+    destroyDepthBuffer();
 
     destroyTextureImageAndSampler();
     destroyUniformBuffers();
@@ -227,12 +238,17 @@ void App::createGraphicsPipeline()
     std::vector<VkVertexInputAttributeDescription> attribute_descs;
     m_layout.getAttributeDescs(binding, attribute_descs);
 
-
     nvvk::GraphicsPipelineState pstate{};
     pstate.rasterizationState.cullMode = VK_CULL_MODE_NONE;
     pstate.addBindingDescription(binding_desc);
     pstate.addAttributeDescriptions(attribute_descs);
-
+    pstate.depthStencilState.depthTestEnable       = VK_TRUE;
+    pstate.depthStencilState.depthWriteEnable      = VK_TRUE;
+    pstate.depthStencilState.depthCompareOp        = VK_COMPARE_OP_LESS;
+    pstate.depthStencilState.depthBoundsTestEnable = VK_FALSE;
+    pstate.depthStencilState.stencilTestEnable     = VK_FALSE;
+    pstate.depthStencilState.minDepthBounds        = 0.0f;
+    pstate.depthStencilState.maxDepthBounds        = 1.0f;
 
     nvvk::GraphicsPipelineGenerator pgen(m_device.device(), m_dset->getPipeLayout(), m_render_pass, pstate);
     pgen.addShader(loadShaderCode("test.vert.spv"), VK_SHADER_STAGE_VERTEX_BIT, "main");
@@ -259,7 +275,7 @@ void App::createFramebuffer()
 
     for (size_t i = 0; i < count; ++i)
     {
-        std::array<VkImageView, 1> attachments = { m_swapchain.getSwapchainImageView(i) };
+        std::array<VkImageView, 2> attachments = { m_swapchain.getSwapchainImageView(i), m_depth_buffer.view };
 
         VkFramebufferCreateInfo info = { VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO };
         info.pNext                   = nullptr;
@@ -355,15 +371,23 @@ void App::createVertexBuffer()
 {
     using VET = vertex::AttributeType;
 
-    vertex::Buffer vb(m_layout, 4);
-    vb[0].attr<VET::Pos2d>()     = { -0.5f, -0.5f };
-    vb[1].attr<VET::Pos2d>()     = { +0.5f, -0.5f };
-    vb[2].attr<VET::Pos2d>()     = { +0.5f, +0.5f };
-    vb[3].attr<VET::Pos2d>()     = { -0.5f, +0.5f };
+    vertex::Buffer vb(m_layout, 8);
+    vb[0].attr<VET::Pos3d>()     = { -0.5f, -0.5f, +0.0f };
+    vb[1].attr<VET::Pos3d>()     = { +0.5f, -0.5f, +0.0f };
+    vb[2].attr<VET::Pos3d>()     = { +0.5f, +0.5f, +0.0f };
+    vb[3].attr<VET::Pos3d>()     = { -0.5f, +0.5f, +0.0f };
+    vb[4].attr<VET::Pos3d>()     = { -0.5f, -0.5f, -0.5f };
+    vb[5].attr<VET::Pos3d>()     = { +0.5f, -0.5f, -0.5f };
+    vb[6].attr<VET::Pos3d>()     = { +0.5f, +0.5f, -0.5f };
+    vb[7].attr<VET::Pos3d>()     = { -0.5f, +0.5f, -0.5f };
     vb[0].attr<VET::TexCoords>() = { 1.0f, 0.0f };
     vb[1].attr<VET::TexCoords>() = { 0.0f, 0.0f };
     vb[2].attr<VET::TexCoords>() = { 0.0f, 1.0f };
     vb[3].attr<VET::TexCoords>() = { 1.0f, 1.0f };
+    vb[4].attr<VET::TexCoords>() = { 1.0f, 0.0f };
+    vb[5].attr<VET::TexCoords>() = { 0.0f, 0.0f };
+    vb[6].attr<VET::TexCoords>() = { 0.0f, 1.0f };
+    vb[7].attr<VET::TexCoords>() = { 1.0f, 1.0f };
 
     m_vertex_buffer = m_alloc->createVertexBuffer(vb);
 
@@ -385,7 +409,7 @@ void App::destroyVertexBuffer()
 
 void App::createIndexBuffer()
 {
-    const std::vector<uint16_t> indices = { 0, 1, 2, 2, 3, 0 };
+    const std::vector<uint16_t> indices = { 0, 1, 2, 2, 3, 0, 4, 5, 6, 6, 7, 4 };
 
     m_index_buffer = m_alloc->createIndexBuffer(indices);
 
@@ -430,6 +454,24 @@ void App::destroyUniformBuffers()
     }
 }
 
+void App::createDepthBuffer()
+{
+    const auto [width, height] = m_swapchain.getSwapchainImageExtent();
+
+    m_depth_buffer = m_alloc->createImage(width,
+                                          height,
+                                          m_depth_format,
+                                          VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+                                          VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+                                          VK_IMAGE_ASPECT_DEPTH_BIT,
+                                          1);
+}
+
+void App::destroyDepthBuffer()
+{
+    m_alloc->destroyImage(m_depth_buffer);
+}
+
 void App::createTextureImageAndSampler()
 {
     int width;
@@ -447,6 +489,7 @@ void App::createTextureImageAndSampler()
                                      VK_FORMAT_R8G8B8A8_SRGB,
                                      VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
                                      VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+                                     VK_IMAGE_ASPECT_COLOR_BIT,
                                      1);
 
     {
@@ -578,8 +621,9 @@ void App::render()
               .offset{ 0, 0 },
               .extent{ extent }
         };
-        VkClearValue clear_value{ .color{ .float32{ 0.1f, 0.1f, 0.1f, 1.0f } } };
-        VkViewport   viewport(0.0f, 0.0f, extent.width, extent.height, 0.0f, 1.0f);
+        std::array<VkClearValue, 2> clear_values{ VkClearValue{ .color{ .float32{ 0.1f, 0.1f, 0.1f, 1.0f } } },
+                                                  VkClearValue{ .depthStencil = { 1.0f, 0 } } };
+        VkViewport                  viewport(0.0f, 0.0f, extent.width, extent.height, 0.0f, 1.0f);
 
         VkRenderPassBeginInfo render_pass_begin{};
         render_pass_begin.sType           = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
@@ -587,8 +631,8 @@ void App::render()
         render_pass_begin.renderPass      = m_render_pass;
         render_pass_begin.framebuffer     = m_framebuffers[img_idx];
         render_pass_begin.renderArea      = area;
-        render_pass_begin.clearValueCount = 1;
-        render_pass_begin.pClearValues    = &clear_value;
+        render_pass_begin.clearValueCount = static_cast<uint32_t>(clear_values.size());
+        render_pass_begin.pClearValues    = clear_values.data();
         vkCmdBeginRenderPass(cmd, &render_pass_begin, VK_SUBPASS_CONTENTS_INLINE);
         {
             vkCmdBindDescriptorSets(cmd,
@@ -611,7 +655,7 @@ void App::render()
 
             vkCmdBindIndexBuffer(cmd, m_index_buffer.buffer, 0, VK_INDEX_TYPE_UINT16);
 
-            vkCmdDrawIndexed(cmd, 6, 1, 0, 0, 0);
+            vkCmdDrawIndexed(cmd, 12, 1, 0, 0, 0);
         }
         vkCmdEndRenderPass(cmd);
     }

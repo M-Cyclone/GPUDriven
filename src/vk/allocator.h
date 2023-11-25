@@ -32,7 +32,8 @@ public:
                       VkFormat              format,
                       VkImageUsageFlags     usage,
                       VkMemoryPropertyFlags properties,
-                      uint32_t              mip_level);
+                      VkImageAspectFlags    aspect_flags,
+                      uint32_t              mip_level = 1);
     
     void destroyImage(Image& image);
 
@@ -44,6 +45,8 @@ public:
     static void copyBufferToImage(VkCommandBuffer cmd, VkBuffer src, VkImage dst, uint32_t width, uint32_t height);
 
     uint32_t findMemoryType(uint32_t type_filter, VkMemoryPropertyFlags properties) const;
+
+    VkFormat findSupportedFormat(const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features);
 
 private:
     Device& m_device;

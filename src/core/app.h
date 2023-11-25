@@ -52,6 +52,9 @@ private:
     void createUniformBuffers();
     void destroyUniformBuffers();
 
+    void createDepthBuffer();
+    void destroyDepthBuffer();
+
     void createTextureImageAndSampler();
     void destroyTextureImageAndSampler();
 
@@ -105,6 +108,9 @@ private:
 
     Image     m_texture;
     VkSampler m_sampler;
+
+    VkFormat m_depth_format;
+    Image    m_depth_buffer;
 
     uint8_t m_is_running : 1 = true;
 };
