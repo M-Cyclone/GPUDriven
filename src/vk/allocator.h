@@ -33,7 +33,8 @@ public:
                       VkImageUsageFlags     usage,
                       VkMemoryPropertyFlags properties,
                       VkImageAspectFlags    aspect_flags,
-                      uint32_t              mip_level = 1);
+                      VkSampleCountFlagBits sample_count,
+                      uint32_t              mip_level);
     
     void destroyImage(Image& image);
 

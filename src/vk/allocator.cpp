@@ -90,6 +90,7 @@ Image Allocator::createImage(uint32_t              width,
                              VkImageUsageFlags     usage,
                              VkMemoryPropertyFlags properties,
                              VkImageAspectFlags    aspect_flags,
+                             VkSampleCountFlagBits sample_count,
                              uint32_t              mip_level)
 {
     Image img;
@@ -102,7 +103,7 @@ Image Allocator::createImage(uint32_t              width,
     img_info.extent                = { width, height, 1 };
     img_info.mipLevels             = mip_level;
     img_info.arrayLayers           = 1;
-    img_info.samples               = VK_SAMPLE_COUNT_1_BIT;
+    img_info.samples               = sample_count;
     img_info.tiling                = VK_IMAGE_TILING_OPTIMAL;
     img_info.usage                 = usage;
     img_info.sharingMode           = VK_SHARING_MODE_EXCLUSIVE;

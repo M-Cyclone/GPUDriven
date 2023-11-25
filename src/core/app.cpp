@@ -22,7 +22,6 @@
 
 #include "vk/error.h"
 #include "vk/pipeline.h"
-#include "vk/render_pass.h"
 
 #include "utils/load_shader.h"
 
@@ -111,13 +110,13 @@ void App::onResize(uint32_t width, uint32_t height)
     vkDeviceWaitIdle(m_device.device());
 
     destroyFramebuffer();
-    destroyDepthBuffer();
+    destroyAttachmentBuffer();
     m_swapchain.deinit(m_device);
 
 
     m_swapchain.querySwapchainInfo(m_device, width, height);
     m_swapchain.init(m_device);
-    createDepthBuffer();
+    createAttachmentBuffer();
     createFramebuffer();
 }
 
@@ -135,6 +134,37 @@ void App::init()
 
     m_alloc = std::make_unique<Allocator>(m_device);
 
+    {
+        VkPhysicalDeviceProperties props;
+        vkGetPhysicalDeviceProperties(m_device.activeGPU(), &props);
+
+        VkSampleCountFlags counts = props.limits.framebufferColorSampleCounts & props.limits.framebufferDepthSampleCounts;
+        if (counts & VK_SAMPLE_COUNT_2_BIT)
+        {
+            m_msaa_samples = VK_SAMPLE_COUNT_2_BIT;
+        }
+        if (counts & VK_SAMPLE_COUNT_4_BIT)
+        {
+            m_msaa_samples = VK_SAMPLE_COUNT_4_BIT;
+        }
+        if (counts & VK_SAMPLE_COUNT_8_BIT)
+        {
+            m_msaa_samples = VK_SAMPLE_COUNT_8_BIT;
+        }
+        if (counts & VK_SAMPLE_COUNT_16_BIT)
+        {
+            m_msaa_samples = VK_SAMPLE_COUNT_16_BIT;
+        }
+        if (counts & VK_SAMPLE_COUNT_32_BIT)
+        {
+            m_msaa_samples = VK_SAMPLE_COUNT_32_BIT;
+        }
+        if (counts & VK_SAMPLE_COUNT_64_BIT)
+        {
+            m_msaa_samples = VK_SAMPLE_COUNT_64_BIT;
+        }
+    }
+
 
     m_swapchain.querySwapchainInfo(m_device, k_window_width, k_window_height);
     m_swapchain.init(m_device);
@@ -144,14 +174,6 @@ void App::init()
                                                   VK_IMAGE_TILING_OPTIMAL,
                                                   VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT);
 
-    m_render_pass = nvvk::createRenderPass(m_device.device(),
-                                           { m_swapchain.getSurfaceFormat() },
-                                           m_depth_format,
-                                           1,
-                                           true,
-                                           true,
-                                           VK_IMAGE_LAYOUT_UNDEFINED,
-                                           VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 
     using VET = vertex::AttributeType;
     m_layout.append(VET::Pos3d);      // pos
@@ -165,7 +187,9 @@ void App::init()
 
     createTextureImageAndSampler();
 
-    createDepthBuffer();
+    createAttachmentBuffer();
+
+    createRenderPass();
 
     createFramebuffer();
 
@@ -184,7 +208,9 @@ void App::exit()
 
     destroyFramebuffer();
 
-    destroyDepthBuffer();
+    destroyRenderPass();
+
+    destroyAttachmentBuffer();
 
     destroyTextureImageAndSampler();
 
@@ -193,8 +219,6 @@ void App::exit()
     destroyVertexBuffer();
 
     destroyCmdPoolAndDeallocateBuffer();
-
-    vkDestroyRenderPass(m_device.device(), m_render_pass, nullptr);
 
     m_swapchain.deinit(m_device);
 
@@ -241,7 +265,8 @@ void App::createGraphicsPipeline()
     m_layout.getAttributeDescs(binding, attribute_descs);
 
     nvvk::GraphicsPipelineState pstate{};
-    pstate.rasterizationState.cullMode = VK_CULL_MODE_NONE;
+    pstate.rasterizationState.cullMode           = VK_CULL_MODE_NONE;
+    pstate.multisampleState.rasterizationSamples = m_msaa_samples;
     pstate.addBindingDescription(binding_desc);
     pstate.addAttributeDescriptions(attribute_descs);
     pstate.depthStencilState.depthTestEnable       = VK_TRUE;
@@ -277,7 +302,7 @@ void App::createFramebuffer()
 
     for (size_t i = 0; i < count; ++i)
     {
-        std::array<VkImageView, 2> attachments = { m_swapchain.getSwapchainImageView(i), m_depth_buffer.view };
+        std::array<VkImageView, 3> attachments = { m_color_buffer.view, m_depth_buffer.view, m_swapchain.getSwapchainImageView(i) };
 
         VkFramebufferCreateInfo info = { VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO };
         info.pNext                   = nullptr;
@@ -456,9 +481,18 @@ void App::destroyUniformBuffers()
     }
 }
 
-void App::createDepthBuffer()
+void App::createAttachmentBuffer()
 {
     const auto [width, height] = m_swapchain.getSwapchainImageExtent();
+
+    m_color_buffer = m_alloc->createImage(width,
+                                          height,
+                                          m_swapchain.getSurfaceFormat(),
+                                          VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+                                          VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+                                          VK_IMAGE_ASPECT_COLOR_BIT,
+                                          m_msaa_samples,
+                                          1);
 
     m_depth_buffer = m_alloc->createImage(width,
                                           height,
@@ -466,10 +500,11 @@ void App::createDepthBuffer()
                                           VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
                                           VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
                                           VK_IMAGE_ASPECT_DEPTH_BIT,
+                                          m_msaa_samples,
                                           1);
 }
 
-void App::destroyDepthBuffer()
+void App::destroyAttachmentBuffer()
 {
     m_alloc->destroyImage(m_depth_buffer);
 }
@@ -498,6 +533,7 @@ void App::createTextureImageAndSampler()
                                      VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
                                      VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
                                      VK_IMAGE_ASPECT_COLOR_BIT,
+                                     VK_SAMPLE_COUNT_1_BIT,
                                      mip_levels);
 
     {
@@ -646,6 +682,129 @@ void App::destroyTextureImageAndSampler()
 {
     vkDestroySampler(m_device.device(), m_sampler, nullptr);
     m_alloc->destroyImage(m_texture);
+}
+
+void App::createRenderPass()
+{
+    //m_render_pass = nvvk::createRenderPass(m_device.device(),
+    //                                       { m_swapchain.getSurfaceFormat() },
+    //                                       m_depth_format,
+    //                                       1,
+    //                                       true,
+    //                                       true,
+    //                                       VK_IMAGE_LAYOUT_UNDEFINED,
+    //                                       VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+    //                                       m_msaa_samples);
+
+    std::vector<VkFormat> color_formats = { m_swapchain.getSurfaceFormat() };
+    VkFormat              depth_format  = m_depth_format;
+
+    std::vector<VkAttachmentDescription> allAttachments;
+    std::vector<VkAttachmentReference>   colorAttachmentRefs;
+
+    for (const auto& format : color_formats)
+    {
+        VkAttachmentDescription colorAttachment = {};
+        colorAttachment.format                  = format;
+        colorAttachment.samples                 = m_msaa_samples;
+        colorAttachment.loadOp                  = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        colorAttachment.storeOp                 = VK_ATTACHMENT_STORE_OP_STORE;
+        colorAttachment.stencilLoadOp           = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+        colorAttachment.stencilStoreOp          = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+        colorAttachment.initialLayout           = VK_IMAGE_LAYOUT_UNDEFINED;
+        colorAttachment.finalLayout             = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+        VkAttachmentReference colorAttachmentRef = {};
+        colorAttachmentRef.attachment            = static_cast<uint32_t>(allAttachments.size());
+        colorAttachmentRef.layout                = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+        allAttachments.push_back(colorAttachment);
+        colorAttachmentRefs.push_back(colorAttachmentRef);
+    }
+
+    VkAttachmentReference depthAttachmentRef = {};
+    {
+        VkAttachmentDescription depthAttachment = {};
+        depthAttachment.format                  = m_depth_format;
+        depthAttachment.samples                 = m_msaa_samples;
+        depthAttachment.loadOp                  = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        depthAttachment.storeOp                 = VK_ATTACHMENT_STORE_OP_STORE;
+        depthAttachment.stencilLoadOp           = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+        depthAttachment.stencilStoreOp          = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+        depthAttachment.initialLayout           = VK_IMAGE_LAYOUT_UNDEFINED;
+        depthAttachment.finalLayout             = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+        depthAttachmentRef.attachment = static_cast<uint32_t>(allAttachments.size());
+        depthAttachmentRef.layout     = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+        allAttachments.push_back(depthAttachment);
+    }
+
+    // Resolve msaa color buffer. Present src.
+    VkAttachmentReference resolve_attachment = {};
+    {
+        VkAttachmentDescription colorAttachment = {};
+        colorAttachment.format                  = m_swapchain.getSurfaceFormat();
+        colorAttachment.samples                 = VK_SAMPLE_COUNT_1_BIT;
+        colorAttachment.loadOp                  = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+        colorAttachment.storeOp                 = VK_ATTACHMENT_STORE_OP_STORE;
+        colorAttachment.stencilLoadOp           = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+        colorAttachment.stencilStoreOp          = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+        colorAttachment.initialLayout           = VK_IMAGE_LAYOUT_UNDEFINED;
+        colorAttachment.finalLayout             = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+
+        resolve_attachment.attachment = static_cast<uint32_t>(allAttachments.size());
+        resolve_attachment.layout     = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+        allAttachments.push_back(colorAttachment);
+    }
+
+    std::vector<VkSubpassDescription> subpasses;
+    std::vector<VkSubpassDependency>  subpassDependencies;
+
+    for (uint32_t i = 0; i < 1; i++)
+    {
+        VkSubpassDescription subpass    = {};
+        subpass.flags                   = 0;
+        subpass.pipelineBindPoint       = VK_PIPELINE_BIND_POINT_GRAPHICS;
+        subpass.inputAttachmentCount    = 0;
+        subpass.pInputAttachments       = nullptr;
+        subpass.colorAttachmentCount    = static_cast<uint32_t>(colorAttachmentRefs.size());
+        subpass.pColorAttachments       = colorAttachmentRefs.data();
+        subpass.pResolveAttachments     = &resolve_attachment;
+        subpass.pDepthStencilAttachment = &depthAttachmentRef;
+        subpass.preserveAttachmentCount = 0;
+        subpass.pPreserveAttachments    = nullptr;
+
+        VkSubpassDependency dependency  = {};
+        dependency.srcSubpass           = i == 0 ? (VK_SUBPASS_EXTERNAL) : (i - 1);
+        dependency.dstSubpass           = i;
+        dependency.srcStageMask         = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        dependency.dstStageMask         = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        dependency.srcAccessMask        = 0;
+        dependency.dstAccessMask        = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        dependency.srcStageMask        |= VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+        dependency.dstStageMask        |= VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+        dependency.dstAccessMask       |= VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+
+        subpasses.push_back(subpass);
+        subpassDependencies.push_back(dependency);
+    }
+
+    VkRenderPassCreateInfo renderPassInfo{ VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO };
+    renderPassInfo.attachmentCount = static_cast<uint32_t>(allAttachments.size());
+    renderPassInfo.pAttachments    = allAttachments.data();
+    renderPassInfo.subpassCount    = static_cast<uint32_t>(subpasses.size());
+    renderPassInfo.pSubpasses      = subpasses.data();
+    renderPassInfo.dependencyCount = static_cast<uint32_t>(subpassDependencies.size());
+    renderPassInfo.pDependencies   = subpassDependencies.data();
+
+    NVVK_CHECK(vkCreateRenderPass(m_device.device(), &renderPassInfo, nullptr, &m_render_pass));
+}
+
+void App::destroyRenderPass()
+{
+    vkDestroyRenderPass(m_device.device(), m_render_pass, nullptr);
 }
 
 VkCommandBuffer App::createTempCommandBuffer() const

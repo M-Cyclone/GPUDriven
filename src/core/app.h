@@ -52,11 +52,14 @@ private:
     void createUniformBuffers();
     void destroyUniformBuffers();
 
-    void createDepthBuffer();
-    void destroyDepthBuffer();
+    void createAttachmentBuffer();
+    void destroyAttachmentBuffer();
 
     void createTextureImageAndSampler();
     void destroyTextureImageAndSampler();
+
+    void createRenderPass();
+    void destroyRenderPass();
 
     void createGraphicsPipeline();
     void destroyGraphicsPipeline();
@@ -82,6 +85,8 @@ private:
 
     Device    m_device;
     Swapchain m_swapchain;
+
+    VkSampleCountFlagBits m_msaa_samples;
 
     VkRenderPass               m_render_pass;
     std::vector<VkFramebuffer> m_framebuffers;
@@ -109,6 +114,7 @@ private:
     Image     m_texture;
     VkSampler m_sampler;
 
+    Image    m_color_buffer;
     VkFormat m_depth_format;
     Image    m_depth_buffer;
 
