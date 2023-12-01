@@ -3,6 +3,7 @@
 #include <cassert>
 #include <chrono>
 #include <stdexcept>
+#include <thread>
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
@@ -24,55 +25,55 @@
 #include "vk/pipeline.h"
 
 #include "utils/load_shader.h"
+#include "utils/log.h"
 
 #include "shader_header/device.h"
 #include "shader_header/vertex_info.h"
 
+
 bool g_init_app = false;
 
+static constexpr const char* k_window_title  = "GPU Driven";
+static constexpr uint32_t    k_window_width  = 1280;
+static constexpr uint32_t    k_window_height = 720;
+
 App::App()
-    : m_window{ nullptr, glfwDestroyWindow }
+    : m_window(this, k_window_width, k_window_height, k_window_title)
 {
     assert(!g_init_app);
 
-    glfwInit();
+    GLFWwindow* wnd = m_window.getNativeWindow();
 
-    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-    // glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
-
-    {
-        m_window.reset(
-            glfwCreateWindow(static_cast<int>(k_window_width), static_cast<int>(k_window_height), k_window_title, nullptr, nullptr));
-
-        if (!m_window)
-        {
-            glfwTerminate();
-            throw std::runtime_error("Failed to create window.");
-        }
-
-        // clang-format off
-        glfwSetWindowUserPointer(m_window.get(), this);
-
-        glfwSetWindowCloseCallback(m_window.get(), [](GLFWwindow* wnd)
-            {
-                reinterpret_cast<App*>(glfwGetWindowUserPointer(wnd))->m_is_running = false;
-            });
-
-        glfwSetWindowSizeCallback(m_window.get(), [](GLFWwindow* wnd, int w, int h)
-            {
-                reinterpret_cast<App*>(glfwGetWindowUserPointer(wnd))->onResize(w, h);
-            });
-        // clang-format on
-    }
+    glfwSetCharCallback(wnd, [](GLFWwindow* w, unsigned int codepoint) { ((App*)glfwGetWindowUserPointer(w))->onChar(codepoint); });
+    // glfwSetCharModsCallback();
+    glfwSetCursorEnterCallback(wnd, [](GLFWwindow* w, int entered) { ((App*)glfwGetWindowUserPointer(w))->onCursorEnter(entered); });
+    glfwSetCursorPosCallback(wnd,
+                             [](GLFWwindow* w, double xpos, double ypos) { ((App*)glfwGetWindowUserPointer(w))->onCursorPos(xpos, ypos); });
+    glfwSetDropCallback(wnd, [](GLFWwindow* w, int path_count, const char* paths[]) {
+        ((App*)glfwGetWindowUserPointer(w))->onDrop(path_count, paths);
+    });
+    glfwSetFramebufferSizeCallback(wnd, [](GLFWwindow* w, int width, int height) {
+        ((App*)glfwGetWindowUserPointer(w))->onFramebufferSize(width, height);
+    });
+    // glfwSetJoystickCallback();
+    glfwSetKeyCallback(wnd, [](GLFWwindow* w, int key, int scancode, int action, int mods) {
+        ((App*)glfwGetWindowUserPointer(w))->onKey(key, scancode, action, mods);
+    });
+    // glfwSetMonitorCallback();
+    glfwSetMouseButtonCallback(wnd, [](GLFWwindow* w, int button, int action, int mods) {
+        ((App*)glfwGetWindowUserPointer(w))->onMouseButton(button, action, mods);
+    });
+    glfwSetScrollCallback(wnd, [](GLFWwindow* w, double xoffset, double yoffset) {
+        ((App*)glfwGetWindowUserPointer(w))->onScroll(xoffset, yoffset);
+    });
+    glfwSetWindowCloseCallback(wnd, [](GLFWwindow* w) { ((App*)glfwGetWindowUserPointer(w))->onWindowClose(); });
+    glfwSetWindowFocusCallback(wnd, [](GLFWwindow* w, int focused) { ((App*)glfwGetWindowUserPointer(w))->onWindowFocus(focused); });
+    // glfwSetWindowMaximizeCallback();
+    // glfwSetWindowPosCallback();
+    // glfwSetWindowRefreshCallback();
+    // glfwSetWindowSizeCallback();
 
     g_init_app = true;
-}
-
-App::~App()
-{
-    m_window.reset();
-
-    glfwTerminate();
 }
 
 void App::run()
@@ -85,6 +86,12 @@ void App::run()
     while (m_is_running)
     {
         glfwPollEvents();
+
+        if (m_is_paused)
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+            continue;
+        }
 
         auto  curr = std::chrono::high_resolution_clock::now();
 
@@ -100,34 +107,14 @@ void App::run()
     exit();
 }
 
-void App::onResize(uint32_t width, uint32_t height)
-{
-    m_width        = width;
-    m_height       = height;
-    m_aspect_ratio = (float)width / (float)height;
-
-
-    vkDeviceWaitIdle(m_device.device());
-
-    destroyFramebuffer();
-    destroyAttachmentBuffer();
-    m_swapchain.deinit(m_device);
-
-
-    m_swapchain.querySwapchainInfo(m_device, width, height);
-    m_swapchain.init(m_device);
-    createAttachmentBuffer();
-    createFramebuffer();
-}
-
 void App::init()
 {
     m_device.setVulkanApiVersion(VK_API_VERSION_1_3);
 #ifdef USE_VULKAN_VALIDATION_LAYER
     m_device.addInstanceLayer("VK_LAYER_KHRONOS_validation");
 #endif  // USE_VULKAN_VALIDATION_LAYER
-    m_device.setCreateSurfaceFunc([wnd = m_window.get()](VkInstance instance, VkSurfaceKHR& surface) {
-        return glfwCreateWindowSurface(instance, wnd, nullptr, &surface);
+    m_device.setCreateSurfaceFunc([&wnd = m_window](VkInstance instance, VkSurfaceKHR& surface) {
+        return glfwCreateWindowSurface(instance, wnd.getNativeWindow(), nullptr, &surface);
     });
     m_device.addDeviceExtension(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
     m_device.init();
@@ -507,6 +494,7 @@ void App::createAttachmentBuffer()
 void App::destroyAttachmentBuffer()
 {
     m_alloc->destroyImage(m_depth_buffer);
+    m_alloc->destroyImage(m_color_buffer);
 }
 
 void App::createTextureImageAndSampler()
@@ -847,7 +835,7 @@ void App::update(float delta_time, float total_time)
     UniformBufferObject ubo{};
     ubo.model       = glm::rotate(glm::mat4(1.0f), total_time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
     ubo.view        = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-    ubo.proj        = glm::perspective(glm::radians(45.0f), m_aspect_ratio, 0.1f, 10.0f);
+    ubo.proj        = glm::perspective(glm::radians(45.0f), m_window.getAspectRatio(), 0.1f, 10.0f);
     ubo.proj[1][1] *= -1;
 
     std::memcpy(m_uniform_buffers_mapped[m_curr_frame_idx], &ubo, sizeof(ubo));
@@ -955,4 +943,108 @@ void App::render()
 
 
     m_curr_frame_idx = (m_curr_frame_idx + 1) % k_max_in_flight_count;
+}
+
+void App::onChar(unsigned int codepoint)
+{
+    m_kbd.onChar(codepoint);
+}
+
+void App::onCursorEnter(int entered)
+{
+    if (entered == GLFW_TRUE)
+    {
+        m_mouse.onMouseEnter();
+    }
+    else
+    {
+        m_mouse.onMouseLeave();
+    }
+}
+
+void App::onCursorPos(double xpos, double ypos)
+{
+    m_mouse.onMouseMove((float)xpos, (float)ypos);
+}
+
+void App::onDrop(int path_count, const char* paths[])
+{}
+
+void App::onFramebufferSize(int width, int height)
+{
+    m_window.m_width  = width;
+    m_window.m_height = height;
+
+
+    vkDeviceWaitIdle(m_device.device());
+
+    destroyFramebuffer();
+    destroyAttachmentBuffer();
+    m_swapchain.deinit(m_device);
+
+
+    m_swapchain.querySwapchainInfo(m_device, width, height);
+    m_swapchain.init(m_device);
+    createAttachmentBuffer();
+    createFramebuffer();
+}
+
+void App::onKey(int key, int scancode, int action, int mods)
+{
+    if (action == GLFW_PRESS)
+    {
+        m_kbd.onKeyPressed(key);
+    }
+    else if (action == GLFW_RELEASE)
+    {
+        m_kbd.onKeyReleased(key);
+    }
+}
+
+void App::onMouseButton(int button, int action, int mods)
+{
+    if (button == GLFW_MOUSE_BUTTON_LEFT)
+    {
+        if (action == GLFW_PRESS)
+        {
+            m_mouse.onLeftPressed();
+        }
+        else
+        {
+            m_mouse.onLeftReleased();
+        }
+    }
+    else if (button == GLFW_MOUSE_BUTTON_RIGHT)
+    {
+        if (action == GLFW_PRESS)
+        {
+            m_mouse.onRightPressed();
+        }
+        else
+        {
+            m_mouse.onRightReleased();
+        }
+    }
+}
+
+void App::onScroll(double xoffset, double yoffset)
+{
+    m_mouse.onWheelDelta((int)yoffset);
+}
+
+void App::onWindowClose()
+{
+    m_is_running = false;
+}
+
+void App::onWindowFocus(int focused)
+{
+    if (focused == GLFW_TRUE)
+    {
+        m_is_paused = false;
+    }
+    else
+    {
+        m_is_paused = true;
+    }
 }

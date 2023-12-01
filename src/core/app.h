@@ -12,32 +12,41 @@
 #include "vk/resource.h"
 #include "vk/allocator.h"
 
-struct GLFWwindow;
+#include "core/window.h"
+#include "core/keyboard.h"
+#include "core/mouse.h"
 
 class App
 {
 private:
-    inline static constexpr const char* k_window_title  = "GPU Driven";
-    inline static constexpr uint32_t    k_window_width  = 1280;
-    inline static constexpr uint32_t    k_window_height = 720;
-
     inline static constexpr uint32_t k_max_in_flight_count = 2;
 
 public:
     App();
-    ~App();
+    App(const App&)            = delete;
+    App& operator=(const App&) = delete;
 
     void run();
 
 private:
-    void onResize(uint32_t width, uint32_t height);
+    //void onResize(uint32_t width, uint32_t height);
 
 private:
     void init();
-    void exit();
-
     void update(float delta_time, float total_time);
     void render();
+    void exit();
+
+    void onChar(unsigned int codepoint);
+    void onCursorEnter(int entered);
+    void onCursorPos(double xpos, double ypos);
+    void onDrop(int path_count, const char* paths[]);
+    void onFramebufferSize(int width, int height);
+    void onKey(int key, int scancode, int action, int mods);
+    void onMouseButton(int button, int action, int mods);
+    void onScroll(double xoffset, double yoffset);
+    void onWindowClose();
+    void onWindowFocus(int focused);
 
 private:
     void createCmdPoolAndAllocateBuffer();
@@ -76,12 +85,10 @@ public:
     void            freeTempCommandBuffer(VkCommandBuffer cmd) const;
 
 private:
-    std::unique_ptr<GLFWwindow, void (*)(GLFWwindow*)> m_window;
+    Window m_window;
 
-    std::string m_title        = k_window_title;
-    uint32_t    m_width        = k_window_width;
-    uint32_t    m_height       = k_window_height;
-    float       m_aspect_ratio = 1.0f;
+    Keyboard m_kbd;
+    Mouse    m_mouse;
 
     Device    m_device;
     Swapchain m_swapchain;
@@ -119,4 +126,5 @@ private:
     Image    m_depth_buffer;
 
     uint8_t m_is_running : 1 = true;
+    uint8_t m_is_paused  : 1 = false;
 };

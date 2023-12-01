@@ -3,6 +3,7 @@
 #include <stdexcept>
 
 #include "core/app.h"
+#include "core/window.h"
 
 #include "utils/log.h"
 
@@ -15,7 +16,7 @@ int main()
     }
     catch (std::exception& e)
     {
-        LogError("[Statard Exception] {}.", e.what());
+        LogError(e.what());
         std::system("pause");
         return -1;
     }
