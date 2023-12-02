@@ -540,6 +540,102 @@ void Graphics::drawTestData()
         framebuffer = vk::raii::Framebuffer(m_device, framebuffer_info);
     }
 
+    auto findMemoryType = [this](uint32_t type_filter, VkMemoryPropertyFlags properties) -> uint32_t {
+        VkPhysicalDeviceMemoryProperties available_properties;
+        vkGetPhysicalDeviceMemoryProperties(*m_active_gpu, &available_properties);
+        
+        for (uint32_t i = 0; i < available_properties.memoryTypeCount; i++)
+        {
+            if ((type_filter & (1 << i)) && (available_properties.memoryTypes[i].propertyFlags & properties) == properties)
+            {
+                return i;
+            }
+        }
+
+        throw std::runtime_error("failed to find suitable memory type!");
+    };
+
+    vertex::Layout layout;
+    vk::raii::Buffer       vertex_buffer = nullptr;
+    vk::raii::DeviceMemory vertex_memory = nullptr;
+    {
+        layout.append(vertex::AttributeType::Pos3d);
+        layout.append(vertex::AttributeType::Color3);
+
+        vertex::Buffer vb(layout, 4);
+        vb[0].attr<vertex::AttributeType::Pos3d>()  = { -0.5f, -0.5f, +0.0f };
+        vb[1].attr<vertex::AttributeType::Pos3d>()  = { +0.5f, -0.5f, +0.0f };
+        vb[2].attr<vertex::AttributeType::Pos3d>()  = { +0.5f, +0.5f, +0.0f };
+        vb[3].attr<vertex::AttributeType::Pos3d>()  = { -0.5f, +0.5f, +0.0f };
+        vb[0].attr<vertex::AttributeType::Color3>() = { 1.0f, 0.0f, 0.0f };
+        vb[1].attr<vertex::AttributeType::Color3>() = { 0.0f, 1.0f, 0.0f };
+        vb[2].attr<vertex::AttributeType::Color3>() = { 0.0f, 0.0f, 1.0f };
+        vb[3].attr<vertex::AttributeType::Color3>() = { 1.0f, 1.0f, 0.0f };
+
+        VkBufferCreateInfo buffer_info    = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
+        buffer_info.pNext                 = nullptr;
+        buffer_info.flags                 = 0;
+        buffer_info.size                  = (VkDeviceSize)vb.sizeOf();
+        buffer_info.usage                 = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+        buffer_info.sharingMode           = VK_SHARING_MODE_EXCLUSIVE;
+        buffer_info.queueFamilyIndexCount = 0;
+        buffer_info.pQueueFamilyIndices   = nullptr;
+
+        vertex_buffer = vk::raii::Buffer(m_device, buffer_info);
+
+        VkMemoryRequirements requirements;
+        vkGetBufferMemoryRequirements(*m_device, *vertex_buffer, &requirements);
+
+        VkMemoryAllocateInfo allocate_info = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
+        allocate_info.pNext                = nullptr;
+        allocate_info.allocationSize       = requirements.size;
+        allocate_info.memoryTypeIndex =
+            findMemoryType(requirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+
+        vertex_memory = vk::raii::DeviceMemory(m_device, allocate_info);
+
+        VK_EXCEPT(vkBindBufferMemory(*m_device, *vertex_buffer, *vertex_memory, 0));
+
+        void* data = vertex_memory.mapMemory(0, (VkDeviceSize)vb.sizeOf());
+        std::memcpy(data, vb.dataPtr(), (VkDeviceSize)vb.sizeOf());
+        vertex_memory.unmapMemory();
+    }
+
+    std::vector<uint16_t> indices = { 0, 1, 2, 2, 3, 0 };
+    vk::raii::Buffer      index_buffer = nullptr;
+    vk::raii::DeviceMemory index_memory = nullptr;
+    {
+        VkDeviceSize size = (VkDeviceSize)(sizeof(uint16_t) * indices.size());
+
+        VkBufferCreateInfo buffer_info    = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
+        buffer_info.pNext                 = nullptr;
+        buffer_info.flags                 = 0;
+        buffer_info.size                  = size;
+        buffer_info.usage                 = VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+        buffer_info.sharingMode           = VK_SHARING_MODE_EXCLUSIVE;
+        buffer_info.queueFamilyIndexCount = 0;
+        buffer_info.pQueueFamilyIndices   = nullptr;
+
+        index_buffer = vk::raii::Buffer(m_device, buffer_info);
+
+        VkMemoryRequirements requirements;
+        vkGetBufferMemoryRequirements(*m_device, *index_buffer, &requirements);
+
+        VkMemoryAllocateInfo allocate_info = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
+        allocate_info.pNext                = nullptr;
+        allocate_info.allocationSize       = requirements.size;
+        allocate_info.memoryTypeIndex =
+            findMemoryType(requirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+
+        index_memory = vk::raii::DeviceMemory(m_device, allocate_info);
+
+        VK_EXCEPT(vkBindBufferMemory(*m_device, *index_buffer, *index_memory, 0));
+
+        void* data = index_memory.mapMemory(0, size);
+        std::memcpy(data, indices.data(), size);
+        index_memory.unmapMemory();
+    }
+
     nvvk::DescriptorSetContainer dset(*m_device);
     vk::raii::Pipeline           graphics_pipeline = nullptr;
     {
@@ -550,9 +646,18 @@ void Graphics::drawTestData()
 
         const uint32_t binding = 0;
 
+        VkVertexInputBindingDescription binding_desc{};
+        binding_desc.binding   = binding;
+        binding_desc.stride    = (uint32_t)layout.getStride();
+        binding_desc.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+
+        std::vector<VkVertexInputAttributeDescription> attribute_descs;
+        layout.getAttributeDescs(binding, attribute_descs);
 
         nvvk::GraphicsPipelineState pstate{};
         pstate.rasterizationState.cullMode = VK_CULL_MODE_NONE;
+        pstate.addBindingDescription(binding_desc);
+        pstate.addAttributeDescriptions(attribute_descs);
 
         nvvk::GraphicsPipelineGenerator pgen(*m_device, dset.getPipeLayout(), *render_pass, pstate);
         pgen.addShader(loadShaderCode("test.vert.spv"), VK_SHADER_STAGE_VERTEX_BIT, "main");
@@ -606,7 +711,13 @@ void Graphics::drawTestData()
             vkCmdSetViewport(cmd, 0, 1, &viewport);
             vkCmdSetScissor(cmd, 0, 1, &area);
 
-            vkCmdDraw(cmd, 3, 1, 0, 0);
+            VkBuffer     vertex_buffers[] = { *vertex_buffer };
+            VkDeviceSize offsets[]        = { 0 };
+
+            vkCmdBindVertexBuffers(cmd, 0, 1, vertex_buffers, offsets);
+            vkCmdBindIndexBuffer(cmd, *index_buffer, 0, VK_INDEX_TYPE_UINT16);
+
+            vkCmdDrawIndexed(cmd, 6, 1, 0, 0, 0);
         }
         vkCmdEndRenderPass(cmd);
     }

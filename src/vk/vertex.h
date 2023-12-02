@@ -331,6 +331,7 @@ public:
     Buffer& operator=(Buffer&&)      = default;
 
     std::span<const std::byte> data() const noexcept { return m_data; }
+    const std::byte*           dataPtr() const noexcept { return m_data.data(); }
     const Layout&              layout() const noexcept { return m_layout; }
 
     size_t count() const noexcept { return m_data.size() / m_layout.getStride(); }
