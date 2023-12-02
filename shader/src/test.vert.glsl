@@ -3,20 +3,22 @@
 #extension GL_GOOGLE_include_directive : enable
 
 #include "device.h"
-#include "vertex_info.h"
 
-layout (location = 0) in vec3 in_position;
-layout (location = 1) in vec2 in_texcoords;
+layout(location = 0) out vec3 v_frag_color;
 
-layout (location = 0) out vec2 v_texcoords;
+vec2 positions[3] = vec2[](
+    vec2(0.0, -0.5),
+    vec2(0.5, 0.5),
+    vec2(-0.5, 0.5)
+);
 
-layout (binding = BINDING_UBO) uniform UniformBufferObject_
-{
-    UniformBufferObject ubo;
-};
+vec3 colors[3] = vec3[](
+    vec3(1.0, 0.0, 0.0),
+    vec3(0.0, 1.0, 0.0),
+    vec3(0.0, 0.0, 1.0)
+);
 
-void main()
-{
-    gl_Position = ubo.proj * ubo.view * ubo.model * vec4(in_position, 1.0);
-    v_texcoords = in_texcoords;
+void main() {
+    gl_Position  = vec4(positions[gl_VertexIndex], 0.0, 1.0);
+    v_frag_color = colors[gl_VertexIndex];
 }

@@ -42,12 +42,14 @@ add_includedirs("./")
 add_files(
     "./core/*.cpp",
     "./extern_impl/*.cpp",
+    "./graphics/*.cpp",
     "./utils/*.cpp",
     "./vk/*.cpp"
 )
 add_headerfiles(
     "./core/*.h",
     "./shader_header/*.h",
+    "./graphics/*.h",
     "./utils/*.h",
     "./vk/*.h"
 )

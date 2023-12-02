@@ -43,9 +43,12 @@ public:
     Window(const Window&)            = delete;
     Window& operator=(const Window&) = delete;
 
-    struct GLFWwindow* getNativeWindow() const { return m_window.get(); }
+    struct GLFWwindow* getNativeWindow() const noexcept { return m_window.get(); }
 
-    float getAspectRatio() const { return (float)m_width / (float)m_height; }
+    float       getAspectRatio() const noexcept { return (float)m_width / (float)m_height; }
+    const char* getTitle() const noexcept { return m_title.c_str(); }
+    uint32_t    getWidth() const noexcept { return m_width; }
+    uint32_t    getHeight() const noexcept { return m_height; }
 
 private:
     std::unique_ptr<struct GLFWwindow, void (*)(GLFWwindow*)> m_window;
