@@ -11,9 +11,9 @@
 #include "utils/log.h"
 #include "utils/scienum.h"
 
-#include "vk/descriptorsets.h"
-#include "vk/pipeline.h"
-#include "vk/vertex.h"
+#include "graphics/descriptorsets.h"
+#include "graphics/pipeline.h"
+#include "graphics/vertex.h"
 
 #define VK_EXCEPT(call)                                                                                                                    \
     do                                                                                                                                     \
@@ -73,6 +73,75 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(VkDebugUtilsMessageSeverityF
         return VK_TRUE;
     }
 }
+
+std::vector<VkLayerProperties> enumerateInstanceLayerProperties()
+{
+    uint32_t count = 0;
+    VK_EXCEPT(vkEnumerateInstanceLayerProperties(&count, nullptr));
+    std::vector<VkLayerProperties> props(count);
+    VK_EXCEPT(vkEnumerateInstanceLayerProperties(&count, props.data()));
+    return props;
+}
+
+std::vector<VkPhysicalDevice> enumeratePhysicalDevices(VkInstance instance)
+{
+    uint32_t count = 0;
+    VK_EXCEPT(vkEnumeratePhysicalDevices(instance, &count, nullptr));
+    std::vector<VkPhysicalDevice> gpus(count);
+    VK_EXCEPT(vkEnumeratePhysicalDevices(instance, &count, gpus.data()));
+    return gpus;
+}
+
+std::vector<VkQueueFamilyProperties> getQueueFamilyProperties(VkPhysicalDevice gpu)
+{
+    uint32_t count = 0;
+    vkGetPhysicalDeviceQueueFamilyProperties(gpu, &count, nullptr);
+    std::vector<VkQueueFamilyProperties> props(count);
+    vkGetPhysicalDeviceQueueFamilyProperties(gpu, &count, props.data());
+    return props;
+}
+
+bool getSurfaceSupportKHR(VkPhysicalDevice gpu, uint32_t queue_family_index, VkSurfaceKHR surface)
+{
+    VkBool32 result;
+    VK_EXCEPT(vkGetPhysicalDeviceSurfaceSupportKHR(gpu, queue_family_index, surface, &result));
+    return result == VK_TRUE;
+}
+
+std::vector<VkExtensionProperties> enumerateDeviceExtensionProperties(VkPhysicalDevice gpu, const char* layer_name = nullptr)
+{
+    uint32_t count = 0;
+    VK_EXCEPT(vkEnumerateDeviceExtensionProperties(gpu, layer_name, &count, nullptr));
+    std::vector<VkExtensionProperties> props(count);
+    VK_EXCEPT(vkEnumerateDeviceExtensionProperties(gpu, layer_name, &count, props.data()));
+    return props;
+}
+
+std::vector<VkSurfaceFormatKHR> getSurfaceFormatsKHR(VkPhysicalDevice gpu, VkSurfaceKHR surface)
+{
+    uint32_t count = 0;
+    VK_EXCEPT(vkGetPhysicalDeviceSurfaceFormatsKHR(gpu, surface, &count, nullptr));
+    std::vector<VkSurfaceFormatKHR> formats(count);
+    VK_EXCEPT(vkGetPhysicalDeviceSurfaceFormatsKHR(gpu, surface, &count, formats.data()));
+    return formats;
+}
+
+VkSurfaceCapabilitiesKHR getSurfaceCapabilitiesKHR(VkPhysicalDevice gpu, VkSurfaceKHR surface)
+{
+    VkSurfaceCapabilitiesKHR capabilities;
+    VK_EXCEPT(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(gpu, surface, &capabilities));
+    return capabilities;
+}
+
+std::vector<VkPresentModeKHR> getSurfacePresentModesKHR(VkPhysicalDevice gpu, VkSurfaceKHR surface)
+{
+    uint32_t count = 0;
+    VK_EXCEPT(vkGetPhysicalDeviceSurfacePresentModesKHR(gpu, surface, &count, nullptr));
+    std::vector<VkPresentModeKHR> present_modes(count);
+    VK_EXCEPT(vkGetPhysicalDeviceSurfacePresentModesKHR(gpu, surface, &count, present_modes.data()));
+    return present_modes;
+}
+
 }  // namespace
 #endif  // USE_VULKAN_VALIDATION_LAYER
 
@@ -88,7 +157,7 @@ Graphics::Graphics(Window& window)
         {
             std::vector<const char*> not_found_layers;
 
-            auto available_instance_layers = m_context.enumerateInstanceLayerProperties();
+            auto available_instance_layers = enumerateInstanceLayerProperties();
             for (const char* const layer : instance_layers)
             {
                 bool found = false;
@@ -161,33 +230,43 @@ Graphics::Graphics(Window& window)
         instance_info.pNext = &debug_info;
 #endif  // USE_VULKAN_VALIDATION_LAYER
 
-        m_instance = vk::raii::Instance(m_context, instance_info);
+        VK_EXCEPT(vkCreateInstance(&instance_info, nullptr, &m_instance));
 
 #ifdef USE_VULKAN_VALIDATION_LAYER
-        m_debug_msgr = vk::raii::DebugUtilsMessengerEXT(m_instance, debug_info);
+        {
+            m_vkCreateDebugUtilsMessengerEXT =
+                (PFN_vkCreateDebugUtilsMessengerEXT)vkGetInstanceProcAddr(m_instance, "vkCreateDebugUtilsMessengerEXT");
+            m_vkDestroyDebugUtilsMessengerEXT =
+                (PFN_vkDestroyDebugUtilsMessengerEXT)vkGetInstanceProcAddr(m_instance, "vkDestroyDebugUtilsMessengerEXT");
+
+            if (!m_vkCreateDebugUtilsMessengerEXT || !m_vkDestroyDebugUtilsMessengerEXT)
+            {
+                throw VkException(__LINE__, __FILE__, VK_ERROR_EXTENSION_NOT_PRESENT);
+            }
+
+            VK_EXCEPT(m_vkCreateDebugUtilsMessengerEXT(m_instance, &debug_info, nullptr, &m_debug_msgr));
+        }
 #endif  // USE_VULKAN_VALIDATION_LAYER
     }
 
     {
-        VkSurfaceKHR surface;
-        glfwCreateWindowSurface(*m_instance, m_window.getNativeWindow(), nullptr, &surface);
-        m_surface = vk::raii::SurfaceKHR(m_instance, surface);
+        VK_EXCEPT(glfwCreateWindowSurface(m_instance, m_window.getNativeWindow(), nullptr, &m_surface));
     }
 
     {
-        auto gpus    = m_instance.enumeratePhysicalDevices();
+        auto gpus    = enumeratePhysicalDevices(m_instance);
         m_active_gpu = gpus[0];
 
-        auto     queue_props      = m_active_gpu.getQueueFamilyProperties();
+        auto     queue_props      = getQueueFamilyProperties(m_active_gpu);
         uint32_t queue_family_idx = 0;
         for (const auto& prop : queue_props)
         {
-            if (prop.queueFlags & vk::QueueFlagBits::eGraphics)
+            if (prop.queueFlags & VK_QUEUE_GRAPHICS_BIT)
             {
                 m_queue_family_index_graphics = queue_family_idx;
             }
 
-            if (m_active_gpu.getSurfaceSupportKHR(queue_family_idx, *m_surface))
+            if (getSurfaceSupportKHR(m_active_gpu, queue_family_idx, m_surface))
             {
                 m_queue_family_index_present = queue_family_idx;
             }
@@ -223,7 +302,7 @@ Graphics::Graphics(Window& window)
         {
             std::vector<const char*> not_found_extensions;
 
-            auto available_device_extensions = m_active_gpu.enumerateDeviceExtensionProperties();
+            auto available_device_extensions = enumerateDeviceExtensionProperties(m_active_gpu);
             for (const char* const extension : device_extensions)
             {
                 bool found = false;
@@ -266,20 +345,20 @@ Graphics::Graphics(Window& window)
         device_info.ppEnabledExtensionNames = device_extensions.empty() ? nullptr : device_extensions.data();
         device_info.pEnabledFeatures        = &device_features;
 
-        m_device = vk::raii::Device(m_active_gpu, device_info);
+        VK_EXCEPT(vkCreateDevice(m_active_gpu, &device_info, nullptr, &m_device));
 
 
-        m_queue_graphics = m_device.getQueue(m_queue_family_index_graphics, 0);
-        m_queue_present  = m_device.getQueue(m_queue_family_index_present, 0);
+        vkGetDeviceQueue(m_device, m_queue_family_index_graphics, 0, &m_queue_graphics);
+        vkGetDeviceQueue(m_device, m_queue_family_index_present, 0, &m_queue_present);
     }
 
     {
         {
-            auto formats               = m_active_gpu.getSurfaceFormatsKHR(*m_surface);
+            auto formats               = getSurfaceFormatsKHR(m_active_gpu, m_surface);
             m_swapchain_surface_format = formats[0];
-            for (const vk::SurfaceFormatKHR& format : formats)
+            for (const VkSurfaceFormatKHR& format : formats)
             {
-                if (format.format == vk::Format::eB8G8R8A8Srgb && format.colorSpace == vk::ColorSpaceKHR::eSrgbNonlinear)
+                if (format.format == VK_FORMAT_B8G8R8A8_SRGB && format.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR)
                 {
                     m_swapchain_surface_format = format;
                     break;
@@ -288,7 +367,7 @@ Graphics::Graphics(Window& window)
         }
 
         {
-            auto capas = m_active_gpu.getSurfaceCapabilitiesKHR(*m_surface);
+            auto capas = getSurfaceCapabilitiesKHR(m_active_gpu, m_surface);
 
             m_swapchain_image_count         = std::clamp<uint32_t>(2, capas.minImageCount, capas.maxImageCount);
             m_swapchain_image_extent.width  = std::clamp(m_window.getWidth(), capas.minImageExtent.width, capas.maxImageExtent.width);
@@ -297,11 +376,11 @@ Graphics::Graphics(Window& window)
         }
 
         {
-            auto present_modes       = m_active_gpu.getSurfacePresentModesKHR(*m_surface);
-            m_swapchain_present_mode = vk::PresentModeKHR::eFifo;
+            auto present_modes       = getSurfacePresentModesKHR(m_active_gpu, m_surface);
+            m_swapchain_present_mode = VK_PRESENT_MODE_FIFO_KHR;
             for (const auto& mode : present_modes)
             {
-                if (mode == vk::PresentModeKHR::eMailbox)
+                if (mode == VK_PRESENT_MODE_MAILBOX_KHR)
                 {
                     m_swapchain_present_mode = mode;
                     break;
@@ -315,10 +394,10 @@ Graphics::Graphics(Window& window)
         VkSwapchainCreateInfoKHR swapchain_info = { VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR };
         swapchain_info.pNext                    = nullptr;
         swapchain_info.flags                    = 0;
-        swapchain_info.surface                  = *m_surface;
+        swapchain_info.surface                  = m_surface;
         swapchain_info.minImageCount            = m_swapchain_image_count;
-        swapchain_info.imageFormat              = (VkFormat)m_swapchain_surface_format.format;
-        swapchain_info.imageColorSpace          = (VkColorSpaceKHR)m_swapchain_surface_format.colorSpace;
+        swapchain_info.imageFormat              = m_swapchain_surface_format.format;
+        swapchain_info.imageColorSpace          = m_swapchain_surface_format.colorSpace;
         swapchain_info.imageExtent              = m_swapchain_image_extent;
         swapchain_info.imageArrayLayers         = 1;
         swapchain_info.imageUsage               = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
@@ -331,17 +410,14 @@ Graphics::Graphics(Window& window)
         swapchain_info.clipped                  = VK_TRUE;
         swapchain_info.oldSwapchain             = VK_NULL_HANDLE;
 
-        m_swapchain = vk::raii::SwapchainKHR(m_device, swapchain_info);
+        VK_EXCEPT(vkCreateSwapchainKHR(m_device, &swapchain_info, nullptr, &m_swapchain));
 
         {
-            {
-                auto images             = m_swapchain.getImages();
-                m_swapchain_image_count = (uint32_t)images.size();
-                for (vk::Image image : images)
-                {
-                    m_swapchain_images.push_back(image);
-                }
-            }
+            VK_EXCEPT(vkGetSwapchainImagesKHR(m_device, m_swapchain, &m_swapchain_image_count, nullptr));
+            m_swapchain_images.resize(m_swapchain_image_count);
+            VK_EXCEPT(vkGetSwapchainImagesKHR(m_device, m_swapchain, &m_swapchain_image_count, m_swapchain_images.data()));
+
+            m_swapchain_image_views.resize(m_swapchain_image_count);
 
             for (uint32_t i = 0; i < m_swapchain_image_count; ++i)
             {
@@ -368,7 +444,7 @@ Graphics::Graphics(Window& window)
                 image_view_info.subresourceRange      = range;
                 image_view_info.components            = mapping;
 
-                m_swapchain_image_views.emplace_back(m_device, image_view_info);
+                VK_EXCEPT(vkCreateImageView(m_device, &image_view_info, nullptr, &m_swapchain_image_views[i]));
             }
         }
     }
@@ -379,22 +455,23 @@ Graphics::Graphics(Window& window)
         pool_info.flags                   = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
         pool_info.queueFamilyIndex        = m_queue_family_index_graphics;
 
-        m_swapchain_image_present_cmd_pool = vk::raii::CommandPool(m_device, pool_info);
+        VK_EXCEPT(vkCreateCommandPool(m_device, &pool_info, nullptr, &m_swapchain_image_present_cmd_pool));
 
 
         VkCommandBufferAllocateInfo alloc_info = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO };
         alloc_info.pNext                       = 0;
-        alloc_info.commandPool                 = *m_swapchain_image_present_cmd_pool;
+        alloc_info.commandPool                 = m_swapchain_image_present_cmd_pool;
         alloc_info.level                       = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
         alloc_info.commandBufferCount          = m_swapchain_image_count;
 
-        m_swapchain_image_present_cmds = m_device.allocateCommandBuffers(alloc_info);
+        m_swapchain_image_present_cmds.resize(m_swapchain_image_count);
+        VK_EXCEPT(vkAllocateCommandBuffers(m_device, &alloc_info, m_swapchain_image_present_cmds.data()));
     }
 
     {
-        m_swapchain_render_finished_semaphores.reserve(k_max_in_flight_count);
-        m_swapchain_image_available_semaphores.reserve(k_max_in_flight_count);
-        m_cmd_available_fences.reserve(k_max_in_flight_count);
+        m_swapchain_render_finished_semaphores.resize(k_max_in_flight_count, VK_NULL_HANDLE);
+        m_swapchain_image_available_semaphores.resize(k_max_in_flight_count, VK_NULL_HANDLE);
+        m_cmd_available_fences.resize(k_max_in_flight_count, VK_NULL_HANDLE);
 
         VkSemaphoreCreateInfo semaphore_info = { VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO };
         semaphore_info.pNext                 = nullptr;
@@ -406,31 +483,102 @@ Graphics::Graphics(Window& window)
 
         for (uint32_t i = 0; i < k_max_in_flight_count; ++i)
         {
-            m_swapchain_render_finished_semaphores.emplace_back(m_device, semaphore_info);
-            m_swapchain_image_available_semaphores.emplace_back(m_device, semaphore_info);
-            m_cmd_available_fences.emplace_back(m_device, fence_info);
+            VK_EXCEPT(vkCreateSemaphore(m_device, &semaphore_info, nullptr, &m_swapchain_render_finished_semaphores[i]));
+            VK_EXCEPT(vkCreateSemaphore(m_device, &semaphore_info, nullptr, &m_swapchain_image_available_semaphores[i]));
+            VK_EXCEPT(vkCreateFence(m_device, &fence_info, nullptr, &m_cmd_available_fences[i]));
         }
+    }
+}
+
+Graphics::~Graphics() noexcept
+{
+    for (VkSemaphore s : m_swapchain_render_finished_semaphores)
+    {
+        if (s != VK_NULL_HANDLE)
+        {
+            vkDestroySemaphore(m_device, s, nullptr);
+        }
+    }
+    m_swapchain_render_finished_semaphores.clear();
+    for (VkSemaphore s : m_swapchain_image_available_semaphores)
+    {
+        if (s != VK_NULL_HANDLE)
+        {
+            vkDestroySemaphore(m_device, s, nullptr);
+        }
+    }
+    m_swapchain_image_available_semaphores.clear();
+    for (VkFence f : m_cmd_available_fences)
+    {
+        if (f != VK_NULL_HANDLE)
+        {
+            vkDestroyFence(m_device, f, nullptr);
+        }
+    }
+    m_cmd_available_fences.clear();
+
+    if (m_swapchain_image_present_cmd_pool != VK_NULL_HANDLE)
+    {
+        vkFreeCommandBuffers(m_device, m_swapchain_image_present_cmd_pool, m_swapchain_image_count, m_swapchain_image_present_cmds.data());
+        vkDestroyCommandPool(m_device, m_swapchain_image_present_cmd_pool, nullptr);
+        m_swapchain_image_present_cmds.clear();
+        m_swapchain_image_present_cmd_pool = VK_NULL_HANDLE;
+    }
+
+    if (m_swapchain != VK_NULL_HANDLE)
+    {
+        for (VkImageView view : m_swapchain_image_views)
+        {
+            vkDestroyImageView(m_device, view, nullptr);
+        }
+        vkDestroySwapchainKHR(m_device, m_swapchain, nullptr);
+        m_swapchain_image_views.clear();
+        m_swapchain = VK_NULL_HANDLE;
+    }
+
+    if (m_device != VK_NULL_HANDLE)
+    {
+        vkDestroyDevice(m_device, nullptr);
+        m_device = VK_NULL_HANDLE;
+    }
+
+    if (m_surface != VK_NULL_HANDLE)
+    {
+        vkDestroySurfaceKHR(m_instance, m_surface, nullptr);
+        m_surface = VK_NULL_HANDLE;
+    }
+
+    if (m_debug_msgr != VK_NULL_HANDLE)
+    {
+        m_vkDestroyDebugUtilsMessengerEXT(m_instance, m_debug_msgr, nullptr);
+        m_debug_msgr = VK_NULL_HANDLE;
+    }
+
+    if (m_instance != VK_NULL_HANDLE)
+    {
+        vkDestroyInstance(m_instance, nullptr);
+        m_instance = VK_NULL_HANDLE;
     }
 }
 
 void Graphics::waitIdle()
 {
-    m_device.waitIdle();
+    VK_EXCEPT(vkDeviceWaitIdle(m_device));
 }
 
 void Graphics::beginFrame()
 {
-    m_curr_sc_render_finish_semaphore = *m_swapchain_render_finished_semaphores[m_curr_frame_index];
-    m_curr_sc_img_available_semaphore = *m_swapchain_image_available_semaphores[m_curr_frame_index];
-    m_curr_cmd_available_fence        = *m_cmd_available_fences[m_curr_frame_index];
+    m_curr_sc_render_finish_semaphore = m_swapchain_render_finished_semaphores[m_curr_frame_index];
+    m_curr_sc_img_available_semaphore = m_swapchain_image_available_semaphores[m_curr_frame_index];
+    m_curr_cmd_available_fence        = m_cmd_available_fences[m_curr_frame_index];
 
-    m_curr_cmd = *m_swapchain_image_present_cmds[m_curr_frame_index];
+    m_curr_cmd = m_swapchain_image_present_cmds[m_curr_frame_index];
 
-    VK_EXCEPT(vkWaitForFences(*m_device, 1, &m_curr_cmd_available_fence, VK_TRUE, std::numeric_limits<uint64_t>::max()));
-    VK_EXCEPT(vkResetFences(*m_device, 1, &m_curr_cmd_available_fence));
+    VK_EXCEPT(vkWaitForFences(m_device, 1, &m_curr_cmd_available_fence, VK_TRUE, std::numeric_limits<uint64_t>::max()));
+    VK_EXCEPT(vkResetFences(m_device, 1, &m_curr_cmd_available_fence));
 
-    VK_EXCEPT(vkAcquireNextImageKHR(*m_device,
-                                    *m_swapchain,
+    VK_EXCEPT(vkAcquireNextImageKHR(m_device,
+                                    m_swapchain,
                                     std::numeric_limits<uint64_t>::max(),
                                     m_curr_sc_img_available_semaphore,
                                     VK_NULL_HANDLE,
@@ -457,7 +605,7 @@ void Graphics::endFrame()
 
 void Graphics::drawTestData()
 {
-    vk::raii::RenderPass render_pass = nullptr;
+    VkRenderPass render_pass = VK_NULL_HANDLE;
     {
         std::vector<VkAttachmentDescription> allAttachments;
         std::vector<VkAttachmentReference>   color_attachment_refs;
@@ -520,30 +668,30 @@ void Graphics::drawTestData()
         render_pass_info.dependencyCount        = static_cast<uint32_t>(subpassDependencies.size());
         render_pass_info.pDependencies          = subpassDependencies.data();
 
-        render_pass = vk::raii::RenderPass(m_device, render_pass_info);
+        VK_EXCEPT(vkCreateRenderPass(m_device, &render_pass_info, nullptr, &render_pass));
     }
 
-    vk::raii::Framebuffer framebuffer = nullptr;
+    VkFramebuffer framebuffer = VK_NULL_HANDLE;
     {
-        std::array<VkImageView, 1> attachments = { *m_swapchain_image_views[m_curr_sc_img_index] };
+        std::array<VkImageView, 1> attachments = { m_swapchain_image_views[m_curr_sc_img_index] };
 
         VkFramebufferCreateInfo framebuffer_info = { VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO };
         framebuffer_info.pNext                   = nullptr;
         framebuffer_info.flags                   = 0;
-        framebuffer_info.renderPass              = *render_pass;
+        framebuffer_info.renderPass              = render_pass;
         framebuffer_info.attachmentCount         = static_cast<uint32_t>(attachments.size());
         framebuffer_info.pAttachments            = attachments.data();
         framebuffer_info.width                   = m_swapchain_image_extent.width;
         framebuffer_info.height                  = m_swapchain_image_extent.height;
         framebuffer_info.layers                  = 1;
 
-        framebuffer = vk::raii::Framebuffer(m_device, framebuffer_info);
+        VK_EXCEPT(vkCreateFramebuffer(m_device, &framebuffer_info, nullptr, &framebuffer));
     }
 
     auto findMemoryType = [this](uint32_t type_filter, VkMemoryPropertyFlags properties) -> uint32_t {
         VkPhysicalDeviceMemoryProperties available_properties;
-        vkGetPhysicalDeviceMemoryProperties(*m_active_gpu, &available_properties);
-        
+        vkGetPhysicalDeviceMemoryProperties(m_active_gpu, &available_properties);
+
         for (uint32_t i = 0; i < available_properties.memoryTypeCount; i++)
         {
             if ((type_filter & (1 << i)) && (available_properties.memoryTypes[i].propertyFlags & properties) == properties)
@@ -556,8 +704,8 @@ void Graphics::drawTestData()
     };
 
     vertex::Layout layout;
-    vk::raii::Buffer       vertex_buffer = nullptr;
-    vk::raii::DeviceMemory vertex_memory = nullptr;
+    VkBuffer       vertex_buffer = VK_NULL_HANDLE;
+    VkDeviceMemory vertex_memory = VK_NULL_HANDLE;
     {
         layout.append(vertex::AttributeType::Pos3d);
         layout.append(vertex::AttributeType::Color3);
@@ -581,10 +729,10 @@ void Graphics::drawTestData()
         buffer_info.queueFamilyIndexCount = 0;
         buffer_info.pQueueFamilyIndices   = nullptr;
 
-        vertex_buffer = vk::raii::Buffer(m_device, buffer_info);
+        VK_EXCEPT(vkCreateBuffer(m_device, &buffer_info, nullptr, &vertex_buffer));
 
         VkMemoryRequirements requirements;
-        vkGetBufferMemoryRequirements(*m_device, *vertex_buffer, &requirements);
+        vkGetBufferMemoryRequirements(m_device, vertex_buffer, &requirements);
 
         VkMemoryAllocateInfo allocate_info = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
         allocate_info.pNext                = nullptr;
@@ -592,18 +740,19 @@ void Graphics::drawTestData()
         allocate_info.memoryTypeIndex =
             findMemoryType(requirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 
-        vertex_memory = vk::raii::DeviceMemory(m_device, allocate_info);
+        VK_EXCEPT(vkAllocateMemory(m_device, &allocate_info, nullptr, &vertex_memory));
 
-        VK_EXCEPT(vkBindBufferMemory(*m_device, *vertex_buffer, *vertex_memory, 0));
+        VK_EXCEPT(vkBindBufferMemory(m_device, vertex_buffer, vertex_memory, 0));
 
-        void* data = vertex_memory.mapMemory(0, (VkDeviceSize)vb.sizeOf());
+        void* data;
+        VK_EXCEPT(vkMapMemory(m_device, vertex_memory, 0, (VkDeviceSize)vb.sizeOf(), 0, &data));
         std::memcpy(data, vb.dataPtr(), (VkDeviceSize)vb.sizeOf());
-        vertex_memory.unmapMemory();
+        vkUnmapMemory(m_device, vertex_memory);
     }
 
-    std::vector<uint16_t> indices = { 0, 1, 2, 2, 3, 0 };
-    vk::raii::Buffer      index_buffer = nullptr;
-    vk::raii::DeviceMemory index_memory = nullptr;
+    std::vector<uint16_t> indices      = { 0, 1, 2, 2, 3, 0 };
+    VkBuffer              index_buffer = VK_NULL_HANDLE;
+    VkDeviceMemory        index_memory = VK_NULL_HANDLE;
     {
         VkDeviceSize size = (VkDeviceSize)(sizeof(uint16_t) * indices.size());
 
@@ -616,10 +765,10 @@ void Graphics::drawTestData()
         buffer_info.queueFamilyIndexCount = 0;
         buffer_info.pQueueFamilyIndices   = nullptr;
 
-        index_buffer = vk::raii::Buffer(m_device, buffer_info);
+        VK_EXCEPT(vkCreateBuffer(m_device, &buffer_info, nullptr, &index_buffer));
 
         VkMemoryRequirements requirements;
-        vkGetBufferMemoryRequirements(*m_device, *index_buffer, &requirements);
+        vkGetBufferMemoryRequirements(m_device, index_buffer, &requirements);
 
         VkMemoryAllocateInfo allocate_info = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
         allocate_info.pNext                = nullptr;
@@ -627,17 +776,18 @@ void Graphics::drawTestData()
         allocate_info.memoryTypeIndex =
             findMemoryType(requirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 
-        index_memory = vk::raii::DeviceMemory(m_device, allocate_info);
+        VK_EXCEPT(vkAllocateMemory(m_device, &allocate_info, nullptr, &index_memory));
 
-        VK_EXCEPT(vkBindBufferMemory(*m_device, *index_buffer, *index_memory, 0));
+        VK_EXCEPT(vkBindBufferMemory(m_device, index_buffer, index_memory, 0));
 
-        void* data = index_memory.mapMemory(0, size);
+        void* data;
+        VK_EXCEPT(vkMapMemory(m_device, index_memory, 0, size, 0, &data));
         std::memcpy(data, indices.data(), size);
-        index_memory.unmapMemory();
+        vkUnmapMemory(m_device, index_memory);
     }
 
-    nvvk::DescriptorSetContainer dset(*m_device);
-    vk::raii::Pipeline           graphics_pipeline = nullptr;
+    vulkan::DescriptorSetContainer dset(m_device);
+    VkPipeline                     graphics_pipeline = VK_NULL_HANDLE;
     {
         dset.initLayout();
         dset.initPool(k_max_in_flight_count);
@@ -654,17 +804,16 @@ void Graphics::drawTestData()
         std::vector<VkVertexInputAttributeDescription> attribute_descs;
         layout.getAttributeDescs(binding, attribute_descs);
 
-        nvvk::GraphicsPipelineState pstate{};
+        vulkan::GraphicsPipelineState pstate{};
         pstate.rasterizationState.cullMode = VK_CULL_MODE_NONE;
         pstate.addBindingDescription(binding_desc);
         pstate.addAttributeDescriptions(attribute_descs);
 
-        nvvk::GraphicsPipelineGenerator pgen(*m_device, dset.getPipeLayout(), *render_pass, pstate);
+        vulkan::GraphicsPipelineGenerator pgen(m_device, dset.getPipeLayout(), render_pass, pstate);
         pgen.addShader(loadShaderCode("test.vert.spv"), VK_SHADER_STAGE_VERTEX_BIT, "main");
         pgen.addShader(loadShaderCode("test.frag.spv"), VK_SHADER_STAGE_FRAGMENT_BIT, "main");
 
-        VkPipeline pipeline = pgen.createPipeline();
-        graphics_pipeline   = vk::raii::Pipeline(m_device, pipeline);
+        graphics_pipeline = pgen.createPipeline();
 
         pgen.clearShaders();
     }
@@ -690,8 +839,8 @@ void Graphics::drawTestData()
         VkRenderPassBeginInfo render_pass_begin{};
         render_pass_begin.sType           = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
         render_pass_begin.pNext           = nullptr;
-        render_pass_begin.renderPass      = *render_pass;
-        render_pass_begin.framebuffer     = *framebuffer;
+        render_pass_begin.renderPass      = render_pass;
+        render_pass_begin.framebuffer     = framebuffer;
         render_pass_begin.renderArea      = area;
         render_pass_begin.clearValueCount = 1;
         render_pass_begin.pClearValues    = &clear_color;
@@ -706,16 +855,16 @@ void Graphics::drawTestData()
                                     0,
                                     nullptr);
 
-            vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, *graphics_pipeline);
+            vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, graphics_pipeline);
 
             vkCmdSetViewport(cmd, 0, 1, &viewport);
             vkCmdSetScissor(cmd, 0, 1, &area);
 
-            VkBuffer     vertex_buffers[] = { *vertex_buffer };
+            VkBuffer     vertex_buffers[] = { vertex_buffer };
             VkDeviceSize offsets[]        = { 0 };
 
             vkCmdBindVertexBuffers(cmd, 0, 1, vertex_buffers, offsets);
-            vkCmdBindIndexBuffer(cmd, *index_buffer, 0, VK_INDEX_TYPE_UINT16);
+            vkCmdBindIndexBuffer(cmd, index_buffer, 0, VK_INDEX_TYPE_UINT16);
 
             vkCmdDrawIndexed(cmd, 6, 1, 0, 0, 0);
         }
@@ -736,10 +885,10 @@ void Graphics::drawTestData()
     submit_info.pCommandBuffers      = &cmd;
     submit_info.signalSemaphoreCount = 1;
     submit_info.pSignalSemaphores    = &m_curr_sc_render_finish_semaphore;
-    VK_EXCEPT(vkQueueSubmit(*m_queue_graphics, 1, &submit_info, m_curr_cmd_available_fence));
+    VK_EXCEPT(vkQueueSubmit(m_queue_graphics, 1, &submit_info, m_curr_cmd_available_fence));
 
 
-    VkSwapchainKHR swapchains[] = { *m_swapchain };
+    VkSwapchainKHR swapchains[] = { m_swapchain };
 
     VkPresentInfoKHR present_info   = { VK_STRUCTURE_TYPE_PRESENT_INFO_KHR };
     present_info.pNext              = nullptr;
@@ -750,10 +899,25 @@ void Graphics::drawTestData()
     present_info.pImageIndices      = &m_curr_sc_img_index;
     present_info.pResults           = nullptr;
 
-    VK_EXCEPT(vkQueuePresentKHR(*m_queue_graphics, &present_info));
+    VK_EXCEPT(vkQueuePresentKHR(m_queue_graphics, &present_info));
 
 
     m_curr_frame_index = (m_curr_frame_index + 1) % k_max_in_flight_count;
 
     waitIdle();
+
+
+    // Destroy resources.
+    {
+        vkDestroyPipeline(m_device, graphics_pipeline, nullptr);
+
+        vkDestroyBuffer(m_device, vertex_buffer, nullptr);
+        vkDestroyBuffer(m_device, index_buffer, nullptr);
+        vkFreeMemory(m_device, vertex_memory, nullptr);
+        vkFreeMemory(m_device, index_memory, nullptr);
+
+        vkDestroyFramebuffer(m_device, framebuffer, nullptr);
+
+        vkDestroyRenderPass(m_device, render_pass, nullptr);
+    }
 }

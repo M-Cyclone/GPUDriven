@@ -43,15 +43,13 @@ add_files(
     "./core/*.cpp",
     "./extern_impl/*.cpp",
     "./graphics/*.cpp",
-    "./utils/*.cpp",
-    "./vk/*.cpp"
+    "./utils/*.cpp"
 )
 add_headerfiles(
     "./core/*.h",
     "./shader_header/*.h",
     "./graphics/*.h",
-    "./utils/*.h",
-    "./vk/*.h"
+    "./utils/*.h"
 )
 
 set_rundir("$(projectdir)")

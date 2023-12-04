@@ -3,7 +3,7 @@
 
 #include <vulkan/vulkan.hpp>
 
-namespace nvvk
+namespace vulkan
 {
 
 //--------------------------------------------------------------------------------------------------
@@ -422,9 +422,8 @@ public:
         dynamicRenderingInfo = pipelineRenderingCreateInfo;
         if (dynamicRenderingInfo.colorAttachmentCount != 0)
         {
-            dynamicRenderingColorFormats.assign(
-                dynamicRenderingInfo.pColorAttachmentFormats,
-                dynamicRenderingInfo.pColorAttachmentFormats + dynamicRenderingInfo.colorAttachmentCount);
+            dynamicRenderingColorFormats.assign(dynamicRenderingInfo.pColorAttachmentFormats,
+                                                dynamicRenderingInfo.pColorAttachmentFormats + dynamicRenderingInfo.colorAttachmentCount);
             dynamicRenderingInfo.pColorAttachmentFormats = dynamicRenderingColorFormats.data();
         }
 
@@ -437,9 +436,7 @@ public:
 
     ~GraphicsPipelineGenerator() { destroyShaderModules(); }
 
-    VkPipelineShaderStageCreateInfo& addShader(const std::string&    code,
-                                               VkShaderStageFlagBits stage,
-                                               const char*           entryPoint = "main")
+    VkPipelineShaderStageCreateInfo& addShader(const std::string& code, VkShaderStageFlagBits stage, const char* entryPoint = "main")
     {
         std::vector<char> v;
         std::copy(code.begin(), code.end(), std::back_inserter(v));
@@ -447,9 +444,7 @@ public:
     }
 
     template <typename T>
-    VkPipelineShaderStageCreateInfo& addShader(const std::vector<T>& code,
-                                               VkShaderStageFlagBits stage,
-                                               const char*           entryPoint = "main")
+    VkPipelineShaderStageCreateInfo& addShader(const std::vector<T>& code, VkShaderStageFlagBits stage, const char* entryPoint = "main")
 
     {
         VkShaderModuleCreateInfo createInfo{ VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO };
@@ -461,9 +456,7 @@ public:
 
         return addShader(shaderModule, stage, entryPoint);
     }
-    VkPipelineShaderStageCreateInfo& addShader(VkShaderModule        shaderModule,
-                                               VkShaderStageFlagBits stage,
-                                               const char*           entryPoint = "main")
+    VkPipelineShaderStageCreateInfo& addShader(VkShaderModule shaderModule, VkShaderStageFlagBits stage, const char* entryPoint = "main")
     {
         VkPipelineShaderStageCreateInfo shaderStage{ VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO };
         shaderStage.stage  = (VkShaderStageFlagBits)stage;
@@ -556,19 +549,19 @@ nvvk::GraphicsPipelineGeneratorCombined combines both the state and generator in
 
 Example of usage :
 \code{.cpp}
-nvvk::GraphicsPipelineGeneratorCombined pipelineGenerator(m_device, m_pipelineLayout, m_renderPass);
-pipelineGenerator.depthStencilState.setDepthTestEnable(true);
-pipelineGenerator.rasterizationState.setCullMode(vk::CullModeFlagBits::eNone);
-pipelineGenerator.addBindingDescription({0, sizeof(Vertex)});
-pipelineGenerator.addAttributeDescriptions ({
-    {0, 0, vk::Format::eR32G32B32Sfloat, static_cast<uint32_t>(offsetof(Vertex, pos))},
-    {1, 0, vk::Format::eR32G32B32Sfloat, static_cast<uint32_t>(offsetof(Vertex, nrm))},
-    {2, 0, vk::Format::eR32G32B32Sfloat, static_cast<uint32_t>(offsetof(Vertex, col))}});
+    nvvk::GraphicsPipelineGeneratorCombined pipelineGenerator(m_device, m_pipelineLayout, m_renderPass);
+    pipelineGenerator.depthStencilState.setDepthTestEnable(true);
+    pipelineGenerator.rasterizationState.setCullMode(vk::CullModeFlagBits::eNone);
+    pipelineGenerator.addBindingDescription({0, sizeof(Vertex)});
+    pipelineGenerator.addAttributeDescriptions ({
+        {0, 0, vk::Format::eR32G32B32Sfloat, static_cast<uint32_t>(offsetof(Vertex, pos))},
+        {1, 0, vk::Format::eR32G32B32Sfloat, static_cast<uint32_t>(offsetof(Vertex, nrm))},
+        {2, 0, vk::Format::eR32G32B32Sfloat, static_cast<uint32_t>(offsetof(Vertex, col))}});
 
-pipelineGenerator.addShader(readFile("spv/vert_shader.vert.spv"), VkShaderStageFlagBits::eVertex);
-pipelineGenerator.addShader(readFile("spv/frag_shader.frag.spv"), VkShaderStageFlagBits::eFragment);
+    pipelineGenerator.addShader(readFile("spv/vert_shader.vert.spv"), VkShaderStageFlagBits::eVertex);
+    pipelineGenerator.addShader(readFile("spv/frag_shader.frag.spv"), VkShaderStageFlagBits::eFragment);
 
-m_pipeline = pipelineGenerator.createPipeline();
+    m_pipeline = pipelineGenerator.createPipeline();
 \endcode
 */
 
@@ -576,10 +569,10 @@ m_pipeline = pipelineGenerator.createPipeline();
 struct GraphicsPipelineGeneratorCombined : public GraphicsPipelineState,
                                            public GraphicsPipelineGenerator
 {
-    GraphicsPipelineGeneratorCombined(VkDevice device_, const VkPipelineLayout& layout, const VkRenderPass& renderPass)
+    GraphicsPipelineGeneratorCombined(VkDevice device, const VkPipelineLayout& layout, const VkRenderPass& renderPass)
         : GraphicsPipelineState()
-        , GraphicsPipelineGenerator(device_, layout, renderPass, *this)
+        , GraphicsPipelineGenerator(device, layout, renderPass, *this)
     {}
 };
 
-}  // namespace nvvk
+}  // namespace vulkan

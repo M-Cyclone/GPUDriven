@@ -2,7 +2,7 @@
 #include <numeric>
 #include <vector>
 
-#include <vulkan/vulkan_raii.hpp>
+#include <vulkan/vulkan.h>
 
 #include "utils/exception.h"
 
@@ -31,6 +31,7 @@ public:
     explicit Graphics(Window& window);
     Graphics(const Graphics&)            = delete;
     Graphics& operator=(const Graphics&) = delete;
+    ~Graphics() noexcept;
 
     void waitIdle();
 
@@ -42,39 +43,39 @@ public:
 private:
     Window& m_window;
 
-    vk::raii::Context m_context;
-
-    vk::raii::Instance m_instance = nullptr;
+    VkInstance m_instance = VK_NULL_HANDLE;
 #ifdef USE_VULKAN_VALIDATION_LAYER
-    vk::raii::DebugUtilsMessengerEXT m_debug_msgr = nullptr;
+    PFN_vkCreateDebugUtilsMessengerEXT  m_vkCreateDebugUtilsMessengerEXT  = nullptr;
+    PFN_vkDestroyDebugUtilsMessengerEXT m_vkDestroyDebugUtilsMessengerEXT = nullptr;
+    VkDebugUtilsMessengerEXT            m_debug_msgr                      = VK_NULL_HANDLE;
 #endif  // USE_VULKAN_VALIDATION_LAYER
 
-    vk::raii::SurfaceKHR m_surface = nullptr;
+    VkSurfaceKHR m_surface = VK_NULL_HANDLE;
 
-    vk::raii::PhysicalDevice m_active_gpu                  = nullptr;
-    uint32_t                 m_queue_family_index_graphics = k_invalid_queue_index;
-    uint32_t                 m_queue_family_index_present  = k_invalid_queue_index;
-    vk::raii::Device         m_device                      = nullptr;
+    VkPhysicalDevice m_active_gpu                  = VK_NULL_HANDLE;
+    uint32_t         m_queue_family_index_graphics = k_invalid_queue_index;
+    uint32_t         m_queue_family_index_present  = k_invalid_queue_index;
+    VkDevice         m_device                      = VK_NULL_HANDLE;
 
-    vk::raii::Queue m_queue_graphics = nullptr;
-    vk::raii::Queue m_queue_present  = nullptr;
+    VkQueue m_queue_graphics = VK_NULL_HANDLE;
+    VkQueue m_queue_present  = VK_NULL_HANDLE;
 
-    vk::SurfaceFormatKHR         m_swapchain_surface_format;
-    uint32_t                     m_swapchain_image_count = 0;
-    vk::Extent2D                 m_swapchain_image_extent;
-    vk::SurfaceTransformFlagsKHR m_swapchain_transform;
-    vk::PresentModeKHR           m_swapchain_present_mode;
+    VkSurfaceFormatKHR         m_swapchain_surface_format;
+    uint32_t                   m_swapchain_image_count = 0;
+    VkExtent2D                 m_swapchain_image_extent;
+    VkSurfaceTransformFlagsKHR m_swapchain_transform;
+    VkPresentModeKHR           m_swapchain_present_mode;
 
-    vk::raii::SwapchainKHR           m_swapchain = nullptr;
-    std::vector<VkImage>             m_swapchain_images;       // Swapchain image is created by swapchain.
-    std::vector<vk::raii::ImageView> m_swapchain_image_views;  // Swapchain image view is created by Graphics.
+    VkSwapchainKHR           m_swapchain = VK_NULL_HANDLE;
+    std::vector<VkImage>     m_swapchain_images;       // Swapchain image is created by swapchain.
+    std::vector<VkImageView> m_swapchain_image_views;  // Swapchain image view is created by Graphics.
 
-    vk::raii::CommandPool                m_swapchain_image_present_cmd_pool = nullptr;
-    std::vector<vk::raii::CommandBuffer> m_swapchain_image_present_cmds;
-    std::vector<vk::raii::Semaphore>     m_swapchain_render_finished_semaphores;
-    std::vector<vk::raii::Semaphore>     m_swapchain_image_available_semaphores;
-    std::vector<vk::raii::Fence>         m_cmd_available_fences;
-    uint32_t                             m_curr_frame_index = 0;
+    VkCommandPool                m_swapchain_image_present_cmd_pool = VK_NULL_HANDLE;
+    std::vector<VkCommandBuffer> m_swapchain_image_present_cmds;
+    std::vector<VkSemaphore>     m_swapchain_render_finished_semaphores;
+    std::vector<VkSemaphore>     m_swapchain_image_available_semaphores;
+    std::vector<VkFence>         m_cmd_available_fences;
+    uint32_t                     m_curr_frame_index = 0;
 
     uint32_t        m_curr_sc_img_index               = 0;
     VkSemaphore     m_curr_sc_render_finish_semaphore = VK_NULL_HANDLE;

@@ -1,10 +1,10 @@
 #pragma once
-#include <vector>
 #include <cassert>
+#include <vector>
 
 #include <vulkan/vulkan.h>
 
-namespace nvvk
+namespace vulkan
 {
 
 // utility for additional feature support
@@ -17,13 +17,11 @@ enum class DescriptorSupport : uint32_t
 using DescriptorSupport_t = std::underlying_type_t<DescriptorSupport>;
 inline DescriptorSupport operator|(DescriptorSupport lhs, DescriptorSupport rhs)
 {
-    return static_cast<DescriptorSupport>(static_cast<DescriptorSupport_t>(lhs) |
-                                          static_cast<DescriptorSupport_t>(rhs));
+    return static_cast<DescriptorSupport>(static_cast<DescriptorSupport_t>(lhs) | static_cast<DescriptorSupport_t>(rhs));
 }
 inline DescriptorSupport operator&(DescriptorSupport lhs, DescriptorSupport rhs)
 {
-    return static_cast<DescriptorSupport>(static_cast<DescriptorSupport_t>(lhs) &
-                                          static_cast<DescriptorSupport_t>(rhs));
+    return static_cast<DescriptorSupport>(static_cast<DescriptorSupport_t>(lhs) & static_cast<DescriptorSupport_t>(rhs));
 }
 inline bool isSet(DescriptorSupport test, DescriptorSupport query)
 {
@@ -43,10 +41,7 @@ inline bool isAnySet(DescriptorSupport test, DescriptorSupport query)
 
 */
 
-inline VkDescriptorPool createDescriptorPool(VkDevice                    device,
-                                             size_t                      poolSizeCount,
-                                             const VkDescriptorPoolSize* poolSizes,
-                                             uint32_t                    maxSets)
+inline VkDescriptorPool createDescriptorPool(VkDevice device, size_t poolSizeCount, const VkDescriptorPoolSize* poolSizes, uint32_t maxSets)
 {
     VkResult result;
 
@@ -64,9 +59,7 @@ inline VkDescriptorPool createDescriptorPool(VkDevice                    device,
     return descrPool;
 }
 
-inline VkDescriptorPool createDescriptorPool(VkDevice                                 device,
-                                             const std::vector<VkDescriptorPoolSize>& poolSizes,
-                                             uint32_t                                 maxSets)
+inline VkDescriptorPool createDescriptorPool(VkDevice device, const std::vector<VkDescriptorPoolSize>& poolSizes, uint32_t maxSets)
 {
     return createDescriptorPool(device, poolSizes.size(), poolSizes.data(), maxSets);
 }
@@ -163,9 +156,9 @@ public:
     {}
 
     // Add a binding to the descriptor set
-    void addBinding(uint32_t binding,         // Slot to which the descriptor will be bound, corresponding to the layout
-                                              // binding index in the shader
-                    VkDescriptorType   type,  // Type of the bound descriptor(s)
+    void addBinding(uint32_t binding,               // Slot to which the descriptor will be bound, corresponding to the layout
+                                                    // binding index in the shader
+                    VkDescriptorType   type,        // Type of the bound descriptor(s)
                     uint32_t           count,       // Number of descriptors
                     VkShaderStageFlags stageFlags,  // Shader stages at which the bound resources will be available
                     const VkSampler*   pImmutableSampler = nullptr  // Corresponding sampler, in case of textures
@@ -240,15 +233,9 @@ public:
 #endif
     // provide full array
     VkWriteDescriptorSet makeWriteArray(VkDescriptorSet dstSet, uint32_t dstBinding) const;
-    VkWriteDescriptorSet makeWriteArray(VkDescriptorSet              dstSet,
-                                        uint32_t                     dstBinding,
-                                        const VkDescriptorImageInfo* pImageInfo) const;
-    VkWriteDescriptorSet makeWriteArray(VkDescriptorSet               dstSet,
-                                        uint32_t                      dstBinding,
-                                        const VkDescriptorBufferInfo* pBufferInfo) const;
-    VkWriteDescriptorSet makeWriteArray(VkDescriptorSet     dstSet,
-                                        uint32_t            dstBinding,
-                                        const VkBufferView* pTexelBufferView) const;
+    VkWriteDescriptorSet makeWriteArray(VkDescriptorSet dstSet, uint32_t dstBinding, const VkDescriptorImageInfo* pImageInfo) const;
+    VkWriteDescriptorSet makeWriteArray(VkDescriptorSet dstSet, uint32_t dstBinding, const VkDescriptorBufferInfo* pBufferInfo) const;
+    VkWriteDescriptorSet makeWriteArray(VkDescriptorSet dstSet, uint32_t dstBinding, const VkBufferView* pTexelBufferView) const;
 #if VK_NV_ray_tracing
     VkWriteDescriptorSet makeWriteArray(VkDescriptorSet                                    dstSet,
                                         uint32_t                                           dstBinding,
@@ -405,21 +392,15 @@ public:
     }
 #endif
     // provide full array
-    VkWriteDescriptorSet makeWriteArray(uint32_t                     dstSetIdx,
-                                        uint32_t                     dstBinding,
-                                        const VkDescriptorImageInfo* pImageInfo) const
+    VkWriteDescriptorSet makeWriteArray(uint32_t dstSetIdx, uint32_t dstBinding, const VkDescriptorImageInfo* pImageInfo) const
     {
         return m_bindings.makeWriteArray(getSet(dstSetIdx), dstBinding, pImageInfo);
     }
-    VkWriteDescriptorSet makeWriteArray(uint32_t                      dstSetIdx,
-                                        uint32_t                      dstBinding,
-                                        const VkDescriptorBufferInfo* pBufferInfo) const
+    VkWriteDescriptorSet makeWriteArray(uint32_t dstSetIdx, uint32_t dstBinding, const VkDescriptorBufferInfo* pBufferInfo) const
     {
         return m_bindings.makeWriteArray(getSet(dstSetIdx), dstBinding, pBufferInfo);
     }
-    VkWriteDescriptorSet makeWriteArray(uint32_t            dstSetIdx,
-                                        uint32_t            dstBinding,
-                                        const VkBufferView* pTexelBufferView) const
+    VkWriteDescriptorSet makeWriteArray(uint32_t dstSetIdx, uint32_t dstBinding, const VkBufferView* pTexelBufferView) const
     {
         return m_bindings.makeWriteArray(getSet(dstSetIdx), dstBinding, pTexelBufferView);
     }
@@ -663,4 +644,4 @@ void TDescriptorSetContainer<SETS, PIPES>::init(VkDevice device)
     }
 }
 
-}  // namespace nvvk
+}  // namespace vulkan

@@ -1,6 +1,6 @@
-#include "vk/descriptorsets.h"
+#include "graphics/descriptorsets.h"
 
-namespace nvvk
+namespace vulkan
 {
 
 void DescriptorSetContainer::init(VkDevice device)
@@ -33,8 +33,7 @@ void DescriptorSetContainer::setBindingFlags(uint32_t binding, VkDescriptorBindi
     m_bindings.setBindingFlags(binding, bindingFlag);
 }
 
-VkDescriptorSetLayout DescriptorSetContainer::initLayout(VkDescriptorSetLayoutCreateFlags flags /*= 0*/,
-                                                         DescriptorSupport                supportFlags)
+VkDescriptorSetLayout DescriptorSetContainer::initLayout(VkDescriptorSetLayoutCreateFlags flags /*= 0*/, DescriptorSupport supportFlags)
 {
     assert(m_layout == VK_NULL_HANDLE);
 
@@ -127,9 +126,8 @@ VkDescriptorSetLayout DescriptorSetBindings::createLayout(VkDevice              
 {
     VkResult                                    result;
     VkDescriptorSetLayoutBindingFlagsCreateInfo bindingsInfo = {
-        isSet(supportFlags, DescriptorSupport::CORE_1_2)
-            ? VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO
-            : VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO_EXT
+        isSet(supportFlags, DescriptorSupport::CORE_1_2) ? VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO
+                                                         : VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO_EXT
     };
 
     // Pad binding flags to match bindings if any exist
@@ -145,11 +143,9 @@ VkDescriptorSetLayout DescriptorSetBindings::createLayout(VkDevice              
     createInfo.bindingCount                    = uint32_t(m_bindings.size());
     createInfo.pBindings                       = m_bindings.data();
     createInfo.flags                           = flags;
-    createInfo.pNext =
-        m_bindingFlags.empty() &&
-                !(isAnySet(supportFlags, (DescriptorSupport::CORE_1_2 | DescriptorSupport::INDEXING_EXT)))
-            ? nullptr
-            : &bindingsInfo;
+    createInfo.pNext = m_bindingFlags.empty() && !(isAnySet(supportFlags, (DescriptorSupport::CORE_1_2 | DescriptorSupport::INDEXING_EXT)))
+                         ? nullptr
+                         : &bindingsInfo;
 
     VkDescriptorSetLayout descriptorSetLayout;
     result = vkCreateDescriptorSetLayout(device, &createInfo, nullptr, &descriptorSetLayout);
@@ -257,9 +253,7 @@ uint32_t DescriptorSetBindings::getCount(uint32_t binding) const
     return ~0;
 }
 
-VkWriteDescriptorSet DescriptorSetBindings::makeWrite(VkDescriptorSet dstSet,
-                                                      uint32_t        dstBinding,
-                                                      uint32_t        arrayElement) const
+VkWriteDescriptorSet DescriptorSetBindings::makeWrite(VkDescriptorSet dstSet, uint32_t dstBinding, uint32_t arrayElement) const
 {
     VkWriteDescriptorSet writeSet = { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
     writeSet.descriptorType       = VK_DESCRIPTOR_TYPE_MAX_ENUM;
@@ -305,10 +299,8 @@ VkWriteDescriptorSet DescriptorSetBindings::makeWrite(VkDescriptorSet           
                                                       uint32_t                     arrayElement) const
 {
     VkWriteDescriptorSet writeSet = makeWrite(dstSet, dstBinding, arrayElement);
-    assert(writeSet.descriptorType == VK_DESCRIPTOR_TYPE_SAMPLER ||
-           writeSet.descriptorType == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER ||
-           writeSet.descriptorType == VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE ||
-           writeSet.descriptorType == VK_DESCRIPTOR_TYPE_STORAGE_IMAGE ||
+    assert(writeSet.descriptorType == VK_DESCRIPTOR_TYPE_SAMPLER || writeSet.descriptorType == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER ||
+           writeSet.descriptorType == VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE || writeSet.descriptorType == VK_DESCRIPTOR_TYPE_STORAGE_IMAGE ||
            writeSet.descriptorType == VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT);
 
     writeSet.pImageInfo = pImageInfo;
@@ -347,7 +339,7 @@ VkWriteDescriptorSet DescriptorSetBindings::makeWrite(VkDescriptorSet     dstSet
 VkWriteDescriptorSet DescriptorSetBindings::makeWrite(VkDescriptorSet                                    dstSet,
                                                       uint32_t                                           dstBinding,
                                                       const VkWriteDescriptorSetAccelerationStructureNV* pAccel,
-                                                      uint32_t arrayElement) const
+                                                      uint32_t                                           arrayElement) const
 {
     VkWriteDescriptorSet writeSet = makeWrite(dstSet, dstBinding, arrayElement);
     assert(writeSet.descriptorType == VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_NV);
@@ -360,7 +352,7 @@ VkWriteDescriptorSet DescriptorSetBindings::makeWrite(VkDescriptorSet           
 VkWriteDescriptorSet DescriptorSetBindings::makeWrite(VkDescriptorSet                                     dstSet,
                                                       uint32_t                                            dstBinding,
                                                       const VkWriteDescriptorSetAccelerationStructureKHR* pAccel,
-                                                      uint32_t arrayElement) const
+                                                      uint32_t                                            arrayElement) const
 {
     VkWriteDescriptorSet writeSet = makeWrite(dstSet, dstBinding, arrayElement);
     assert(writeSet.descriptorType == VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR);
@@ -374,7 +366,7 @@ VkWriteDescriptorSet DescriptorSetBindings::makeWrite(VkDescriptorSet           
 VkWriteDescriptorSet DescriptorSetBindings::makeWrite(VkDescriptorSet                                  dstSet,
                                                       uint32_t                                         dstBinding,
                                                       const VkWriteDescriptorSetInlineUniformBlockEXT* pInline,
-                                                      uint32_t arrayElement) const
+                                                      uint32_t                                         arrayElement) const
 {
     VkWriteDescriptorSet writeSet = makeWrite(dstSet, dstBinding, arrayElement);
     assert(writeSet.descriptorType == VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK_EXT);
@@ -388,15 +380,12 @@ VkWriteDescriptorSet DescriptorSetBindings::makeWriteArray(VkDescriptorSet      
                                                            const VkDescriptorImageInfo* pImageInfo) const
 {
     VkWriteDescriptorSet writeSet = makeWriteArray(dstSet, dstBinding);
-    assert(writeSet.descriptorType == VK_DESCRIPTOR_TYPE_SAMPLER ||
-           writeSet.descriptorType == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER ||
-           writeSet.descriptorType == VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE ||
-           writeSet.descriptorType == VK_DESCRIPTOR_TYPE_STORAGE_IMAGE ||
+    assert(writeSet.descriptorType == VK_DESCRIPTOR_TYPE_SAMPLER || writeSet.descriptorType == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER ||
+           writeSet.descriptorType == VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE || writeSet.descriptorType == VK_DESCRIPTOR_TYPE_STORAGE_IMAGE ||
            writeSet.descriptorType == VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT);
 
     writeSet.pImageInfo = pImageInfo;
-    assert(writeSet.descriptorCount >
-           0);  // Can have a zero descriptors in the descriptorset layout, but can't write zero items.
+    assert(writeSet.descriptorCount > 0);  // Can have a zero descriptors in the descriptorset layout, but can't write zero items.
     return writeSet;
 }
 
@@ -426,10 +415,9 @@ VkWriteDescriptorSet DescriptorSetBindings::makeWriteArray(VkDescriptorSet     d
 }
 
 #if VK_NV_ray_tracing
-VkWriteDescriptorSet DescriptorSetBindings::makeWriteArray(
-    VkDescriptorSet                                    dstSet,
-    uint32_t                                           dstBinding,
-    const VkWriteDescriptorSetAccelerationStructureNV* pAccel) const
+VkWriteDescriptorSet DescriptorSetBindings::makeWriteArray(VkDescriptorSet                                    dstSet,
+                                                           uint32_t                                           dstBinding,
+                                                           const VkWriteDescriptorSetAccelerationStructureNV* pAccel) const
 {
     VkWriteDescriptorSet writeSet = makeWriteArray(dstSet, dstBinding);
     assert(writeSet.descriptorType == VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_NV);
@@ -439,10 +427,9 @@ VkWriteDescriptorSet DescriptorSetBindings::makeWriteArray(
 }
 #endif
 #if VK_KHR_acceleration_structure
-VkWriteDescriptorSet DescriptorSetBindings::makeWriteArray(
-    VkDescriptorSet                                     dstSet,
-    uint32_t                                            dstBinding,
-    const VkWriteDescriptorSetAccelerationStructureKHR* pAccel) const
+VkWriteDescriptorSet DescriptorSetBindings::makeWriteArray(VkDescriptorSet                                     dstSet,
+                                                           uint32_t                                            dstBinding,
+                                                           const VkWriteDescriptorSetAccelerationStructureKHR* pAccel) const
 {
     VkWriteDescriptorSet writeSet = makeWriteArray(dstSet, dstBinding);
     assert(writeSet.descriptorType == VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR);
@@ -452,10 +439,9 @@ VkWriteDescriptorSet DescriptorSetBindings::makeWriteArray(
 }
 #endif
 #if VK_EXT_inline_uniform_block
-VkWriteDescriptorSet DescriptorSetBindings::makeWriteArray(
-    VkDescriptorSet                                  dstSet,
-    uint32_t                                         dstBinding,
-    const VkWriteDescriptorSetInlineUniformBlockEXT* pInline) const
+VkWriteDescriptorSet DescriptorSetBindings::makeWriteArray(VkDescriptorSet                                  dstSet,
+                                                           uint32_t                                         dstBinding,
+                                                           const VkWriteDescriptorSetInlineUniformBlockEXT* pInline) const
 {
     VkWriteDescriptorSet writeSet = makeWriteArray(dstSet, dstBinding);
     assert(writeSet.descriptorType == VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK_EXT);
@@ -465,4 +451,4 @@ VkWriteDescriptorSet DescriptorSetBindings::makeWriteArray(
 }
 #endif
 
-}  // namespace nvvk
+}  // namespace vulkan
