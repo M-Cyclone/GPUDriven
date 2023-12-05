@@ -688,19 +688,84 @@ void Graphics::drawTestData()
         VK_EXCEPT(vkCreateFramebuffer(m_device, &framebuffer_info, nullptr, &framebuffer));
     }
 
-    auto findMemoryType = [this](uint32_t type_filter, VkMemoryPropertyFlags properties) -> uint32_t {
-        VkPhysicalDeviceMemoryProperties available_properties;
-        vkGetPhysicalDeviceMemoryProperties(m_active_gpu, &available_properties);
+    static auto createBuffer = [this](VkDeviceSize          size,
+                                      VkBufferUsageFlags    usage,
+                                      VkMemoryPropertyFlags properties,
+                                      VkBuffer&             buffer,
+                                      VkDeviceMemory&       memory) {
+        static auto findMemoryType = [this](uint32_t type_filter, VkMemoryPropertyFlags properties) -> uint32_t {
+            VkPhysicalDeviceMemoryProperties available_properties;
+            vkGetPhysicalDeviceMemoryProperties(m_active_gpu, &available_properties);
 
-        for (uint32_t i = 0; i < available_properties.memoryTypeCount; i++)
-        {
-            if ((type_filter & (1 << i)) && (available_properties.memoryTypes[i].propertyFlags & properties) == properties)
+            for (uint32_t i = 0; i < available_properties.memoryTypeCount; i++)
             {
-                return i;
+                if ((type_filter & (1 << i)) && (available_properties.memoryTypes[i].propertyFlags & properties) == properties)
+                {
+                    return i;
+                }
             }
-        }
 
-        throw std::runtime_error("failed to find suitable memory type!");
+            throw std::runtime_error("failed to find suitable memory type!");
+        };
+
+        VkBufferCreateInfo buffer_info    = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
+        buffer_info.pNext                 = nullptr;
+        buffer_info.flags                 = 0;
+        buffer_info.size                  = size;
+        buffer_info.usage                 = usage;
+        buffer_info.sharingMode           = VK_SHARING_MODE_EXCLUSIVE;
+        buffer_info.queueFamilyIndexCount = 0;
+        buffer_info.pQueueFamilyIndices   = nullptr;
+
+        VK_EXCEPT(vkCreateBuffer(m_device, &buffer_info, nullptr, &buffer));
+
+        VkMemoryRequirements requirements;
+        vkGetBufferMemoryRequirements(m_device, buffer, &requirements);
+
+        VkMemoryAllocateInfo allocate_info = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
+        allocate_info.pNext                = nullptr;
+        allocate_info.allocationSize       = requirements.size;
+        allocate_info.memoryTypeIndex =
+            findMemoryType(requirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+
+        VK_EXCEPT(vkAllocateMemory(m_device, &allocate_info, nullptr, &memory));
+
+        VK_EXCEPT(vkBindBufferMemory(m_device, buffer, memory, 0));
+    };
+
+    static auto copyBuffer = [this](VkBuffer src, VkBuffer dst, VkDeviceSize size) {
+        VkCommandBufferAllocateInfo alloc_info = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO };
+        alloc_info.level                       = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+        alloc_info.commandPool                 = m_swapchain_image_present_cmd_pool;
+        alloc_info.commandBufferCount          = 1;
+
+        VkCommandBuffer cmd;
+        VK_EXCEPT(vkAllocateCommandBuffers(m_device, &alloc_info, &cmd));
+
+
+        VkCommandBufferBeginInfo beginInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
+        beginInfo.flags                    = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+        VK_EXCEPT(vkBeginCommandBuffer(cmd, &beginInfo));
+        {
+            VkBufferCopy copyRegion{};
+            copyRegion.srcOffset = 0;
+            copyRegion.dstOffset = 0;
+            copyRegion.size      = size;
+            vkCmdCopyBuffer(cmd, src, dst, 1, &copyRegion);
+        }
+        VK_EXCEPT(vkEndCommandBuffer(cmd));
+
+
+        VkSubmitInfo submit_info       = { VK_STRUCTURE_TYPE_SUBMIT_INFO };
+        submit_info.commandBufferCount = 1;
+        submit_info.pCommandBuffers    = &cmd;
+
+        VK_EXCEPT(vkQueueSubmit(m_queue_graphics, 1, &submit_info, VK_NULL_HANDLE));
+        VK_EXCEPT(vkQueueWaitIdle(m_queue_graphics));
+
+
+        vkFreeCommandBuffers(m_device, m_swapchain_image_present_cmd_pool, 1, &cmd);
     };
 
     vertex::Layout layout;
@@ -720,34 +785,34 @@ void Graphics::drawTestData()
         vb[2].attr<vertex::AttributeType::Color3>() = { 0.0f, 0.0f, 1.0f };
         vb[3].attr<vertex::AttributeType::Color3>() = { 1.0f, 1.0f, 0.0f };
 
-        VkBufferCreateInfo buffer_info    = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
-        buffer_info.pNext                 = nullptr;
-        buffer_info.flags                 = 0;
-        buffer_info.size                  = (VkDeviceSize)vb.sizeOf();
-        buffer_info.usage                 = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
-        buffer_info.sharingMode           = VK_SHARING_MODE_EXCLUSIVE;
-        buffer_info.queueFamilyIndexCount = 0;
-        buffer_info.pQueueFamilyIndices   = nullptr;
+        VkDeviceSize size = (VkDeviceSize)vb.sizeOf();
 
-        VK_EXCEPT(vkCreateBuffer(m_device, &buffer_info, nullptr, &vertex_buffer));
 
-        VkMemoryRequirements requirements;
-        vkGetBufferMemoryRequirements(m_device, vertex_buffer, &requirements);
-
-        VkMemoryAllocateInfo allocate_info = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
-        allocate_info.pNext                = nullptr;
-        allocate_info.allocationSize       = requirements.size;
-        allocate_info.memoryTypeIndex =
-            findMemoryType(requirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-
-        VK_EXCEPT(vkAllocateMemory(m_device, &allocate_info, nullptr, &vertex_memory));
-
-        VK_EXCEPT(vkBindBufferMemory(m_device, vertex_buffer, vertex_memory, 0));
+        VkBuffer       staging_buffer;
+        VkDeviceMemory staging_memory;
+        createBuffer(size,
+                     VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                     staging_buffer,
+                     staging_memory);
 
         void* data;
-        VK_EXCEPT(vkMapMemory(m_device, vertex_memory, 0, (VkDeviceSize)vb.sizeOf(), 0, &data));
-        std::memcpy(data, vb.dataPtr(), (VkDeviceSize)vb.sizeOf());
-        vkUnmapMemory(m_device, vertex_memory);
+        VK_EXCEPT(vkMapMemory(m_device, staging_memory, 0, size, 0, &data));
+        std::memcpy(data, vb.dataPtr(), size);
+        vkUnmapMemory(m_device, staging_memory);
+
+
+        createBuffer(size,
+                     VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+                     VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+                     vertex_buffer,
+                     vertex_memory);
+
+        copyBuffer(staging_buffer, vertex_buffer, size);
+
+
+        vkDestroyBuffer(m_device, staging_buffer, nullptr);
+        vkFreeMemory(m_device, staging_memory, nullptr);
     }
 
     std::vector<uint16_t> indices      = { 0, 1, 2, 2, 3, 0 };
@@ -756,34 +821,32 @@ void Graphics::drawTestData()
     {
         VkDeviceSize size = (VkDeviceSize)(sizeof(uint16_t) * indices.size());
 
-        VkBufferCreateInfo buffer_info    = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
-        buffer_info.pNext                 = nullptr;
-        buffer_info.flags                 = 0;
-        buffer_info.size                  = size;
-        buffer_info.usage                 = VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
-        buffer_info.sharingMode           = VK_SHARING_MODE_EXCLUSIVE;
-        buffer_info.queueFamilyIndexCount = 0;
-        buffer_info.pQueueFamilyIndices   = nullptr;
 
-        VK_EXCEPT(vkCreateBuffer(m_device, &buffer_info, nullptr, &index_buffer));
-
-        VkMemoryRequirements requirements;
-        vkGetBufferMemoryRequirements(m_device, index_buffer, &requirements);
-
-        VkMemoryAllocateInfo allocate_info = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
-        allocate_info.pNext                = nullptr;
-        allocate_info.allocationSize       = requirements.size;
-        allocate_info.memoryTypeIndex =
-            findMemoryType(requirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-
-        VK_EXCEPT(vkAllocateMemory(m_device, &allocate_info, nullptr, &index_memory));
-
-        VK_EXCEPT(vkBindBufferMemory(m_device, index_buffer, index_memory, 0));
+        VkBuffer       staging_buffer;
+        VkDeviceMemory staging_memory;
+        createBuffer(size,
+                     VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                     staging_buffer,
+                     staging_memory);
 
         void* data;
-        VK_EXCEPT(vkMapMemory(m_device, index_memory, 0, size, 0, &data));
+        VK_EXCEPT(vkMapMemory(m_device, staging_memory, 0, size, 0, &data));
         std::memcpy(data, indices.data(), size);
-        vkUnmapMemory(m_device, index_memory);
+        vkUnmapMemory(m_device, staging_memory);
+
+
+        createBuffer(size,
+                     VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+                     VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+                     index_buffer,
+                     index_memory);
+
+        copyBuffer(staging_buffer, index_buffer, size);
+
+
+        vkDestroyBuffer(m_device, staging_buffer, nullptr);
+        vkFreeMemory(m_device, staging_memory, nullptr);
     }
 
     vulkan::DescriptorSetContainer dset(m_device);

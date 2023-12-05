@@ -12,7 +12,7 @@ Window::GLFWHelper::GLFWHelper() noexcept
 {
     glfwInit();
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-    //glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
+    glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 
     glfwSetErrorCallback(
         [](int error_code, const char* description) { throw Window::Exception(-1, "GLFW Internal Code", error_code, description); });
