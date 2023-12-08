@@ -44,9 +44,6 @@ private:
 
     Graphics m_gfx;
 
-    // std::vector<Buffer> m_uniform_buffers;
-    // std::vector<void*>  m_uniform_buffers_mapped;
-
     // Image     m_texture;
     // VkSampler m_sampler;
 

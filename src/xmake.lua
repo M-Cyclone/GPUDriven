@@ -43,12 +43,18 @@ add_files(
     "./core/*.cpp",
     "./extern_impl/*.cpp",
     "./graphics/*.cpp",
+    "./graphics/bindable/*.cpp",
+    -- "./graphics/drawable/*.cpp",
+    "./graphics/resource/*.cpp",
     "./utils/*.cpp"
 )
 add_headerfiles(
     "./core/*.h",
     "./shader_header/*.h",
     "./graphics/*.h",
+    "./graphics/bindable/*.h",
+    "./graphics/drawable/*.h",
+    "./graphics/resource/*.h",
     "./utils/*.h"
 )
 

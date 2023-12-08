@@ -32,14 +32,12 @@
 #include "graphics/pipeline.h"
 #include "graphics/vertex.h"
 
-#define VK_EXCEPT(call)                                                                                                                    \
-    do                                                                                                                                     \
-    {                                                                                                                                      \
-        if (VkResult res = (call); res != VK_SUCCESS)                                                                                      \
-        {                                                                                                                                  \
-            throw ::Graphics::VkException(__LINE__, __FILE__, res);                                                                        \
-        }                                                                                                                                  \
-    } while (false)
+#include "graphics/graphics_throw_macros.h"
+
+#include "graphics/bindable/vertex_buffer.h"
+#include "graphics/bindable/index_buffer.h"
+
+#include "graphics/resource/uniform_buffer.h"
 
 Graphics::VkException::VkException(int line, const char* file, VkResult result) noexcept
     : EngineDefaultException(line, file)
@@ -585,23 +583,21 @@ void Graphics::waitIdle()
 
 void Graphics::beginFrame()
 {
-    m_curr_sc_render_finish_semaphore = m_swapchain_render_finished_semaphores[m_curr_frame_index];
-    m_curr_sc_img_available_semaphore = m_swapchain_image_available_semaphores[m_curr_frame_index];
-    m_curr_cmd_available_fence        = m_cmd_available_fences[m_curr_frame_index];
+    auto sc_img_available_semaphore = getCurrSwapchainImgAvailableSemaphore();
+    auto cmd_available_fence        = getCurrSwapchainCmdAvailableFence();
+    auto cmd                        = getCurrSwapchainCmd();
 
-    m_curr_cmd = m_swapchain_image_present_cmds[m_curr_frame_index];
-
-    VK_EXCEPT(vkWaitForFences(m_device, 1, &m_curr_cmd_available_fence, VK_TRUE, std::numeric_limits<uint64_t>::max()));
-    VK_EXCEPT(vkResetFences(m_device, 1, &m_curr_cmd_available_fence));
+    VK_EXCEPT(vkWaitForFences(m_device, 1, &cmd_available_fence, VK_TRUE, std::numeric_limits<uint64_t>::max()));
+    VK_EXCEPT(vkResetFences(m_device, 1, &cmd_available_fence));
 
     VK_EXCEPT(vkAcquireNextImageKHR(m_device,
                                     m_swapchain,
                                     std::numeric_limits<uint64_t>::max(),
-                                    m_curr_sc_img_available_semaphore,
+                                    sc_img_available_semaphore,
                                     VK_NULL_HANDLE,
                                     &m_curr_sc_img_index));
 
-    VK_EXCEPT(vkResetCommandBuffer(m_curr_cmd, VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT));
+    VK_EXCEPT(vkResetCommandBuffer(cmd, VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT));
 }
 
 void Graphics::endFrame()
@@ -705,94 +701,13 @@ void Graphics::drawTestData()
         VK_EXCEPT(vkCreateFramebuffer(m_device, &framebuffer_info, nullptr, &framebuffer));
     }
 
-    static auto createBuffer = [this](VkDeviceSize          size,
-                                      VkBufferUsageFlags    usage,
-                                      VkMemoryPropertyFlags properties,
-                                      VkBuffer&             buffer,
-                                      VkDeviceMemory&       memory) {
-        static auto findMemoryType = [this](uint32_t type_filter, VkMemoryPropertyFlags properties) -> uint32_t {
-            VkPhysicalDeviceMemoryProperties available_properties;
-            vkGetPhysicalDeviceMemoryProperties(m_active_gpu, &available_properties);
-
-            for (uint32_t i = 0; i < available_properties.memoryTypeCount; i++)
-            {
-                if ((type_filter & (1 << i)) && (available_properties.memoryTypes[i].propertyFlags & properties) == properties)
-                {
-                    return i;
-                }
-            }
-
-            throw std::runtime_error("failed to find suitable memory type!");
-        };
-
-        VkBufferCreateInfo buffer_info    = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
-        buffer_info.pNext                 = nullptr;
-        buffer_info.flags                 = 0;
-        buffer_info.size                  = size;
-        buffer_info.usage                 = usage;
-        buffer_info.sharingMode           = VK_SHARING_MODE_EXCLUSIVE;
-        buffer_info.queueFamilyIndexCount = 0;
-        buffer_info.pQueueFamilyIndices   = nullptr;
-
-        VK_EXCEPT(vkCreateBuffer(m_device, &buffer_info, nullptr, &buffer));
-
-        VkMemoryRequirements requirements;
-        vkGetBufferMemoryRequirements(m_device, buffer, &requirements);
-
-        VkMemoryAllocateInfo allocate_info = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
-        allocate_info.pNext                = nullptr;
-        allocate_info.allocationSize       = requirements.size;
-        allocate_info.memoryTypeIndex =
-            findMemoryType(requirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-
-        VK_EXCEPT(vkAllocateMemory(m_device, &allocate_info, nullptr, &memory));
-
-        VK_EXCEPT(vkBindBufferMemory(m_device, buffer, memory, 0));
-    };
-
-    static auto copyBuffer = [this](VkBuffer src, VkBuffer dst, VkDeviceSize size) {
-        VkCommandBufferAllocateInfo alloc_info = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO };
-        alloc_info.level                       = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-        alloc_info.commandPool                 = m_swapchain_image_present_cmd_pool;
-        alloc_info.commandBufferCount          = 1;
-
-        VkCommandBuffer cmd;
-        VK_EXCEPT(vkAllocateCommandBuffers(m_device, &alloc_info, &cmd));
-
-
-        VkCommandBufferBeginInfo beginInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
-        beginInfo.flags                    = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-
-        VK_EXCEPT(vkBeginCommandBuffer(cmd, &beginInfo));
-        {
-            VkBufferCopy copyRegion{};
-            copyRegion.srcOffset = 0;
-            copyRegion.dstOffset = 0;
-            copyRegion.size      = size;
-            vkCmdCopyBuffer(cmd, src, dst, 1, &copyRegion);
-        }
-        VK_EXCEPT(vkEndCommandBuffer(cmd));
-
-
-        VkSubmitInfo submit_info       = { VK_STRUCTURE_TYPE_SUBMIT_INFO };
-        submit_info.commandBufferCount = 1;
-        submit_info.pCommandBuffers    = &cmd;
-
-        VK_EXCEPT(vkQueueSubmit(m_queue_graphics, 1, &submit_info, VK_NULL_HANDLE));
-        VK_EXCEPT(vkQueueWaitIdle(m_queue_graphics));
-
-
-        vkFreeCommandBuffers(m_device, m_swapchain_image_present_cmd_pool, 1, &cmd);
-    };
-
     vertex::Layout layout;
-    VkBuffer       vertex_buffer = VK_NULL_HANDLE;
-    VkDeviceMemory vertex_memory = VK_NULL_HANDLE;
     {
         layout.append(vertex::AttributeType::Pos3d);
         layout.append(vertex::AttributeType::Color3);
-
-        vertex::Buffer vb(layout, 4);
+    }
+    vertex::Buffer vb(layout, 4);
+    {
         vb[0].attr<vertex::AttributeType::Pos3d>()  = { -0.5f, -0.5f, +0.0f };
         vb[1].attr<vertex::AttributeType::Pos3d>()  = { +0.5f, -0.5f, +0.0f };
         vb[2].attr<vertex::AttributeType::Pos3d>()  = { +0.5f, +0.5f, +0.0f };
@@ -801,92 +716,18 @@ void Graphics::drawTestData()
         vb[1].attr<vertex::AttributeType::Color3>() = { 0.0f, 1.0f, 0.0f };
         vb[2].attr<vertex::AttributeType::Color3>() = { 0.0f, 0.0f, 1.0f };
         vb[3].attr<vertex::AttributeType::Color3>() = { 1.0f, 1.0f, 0.0f };
-
-        VkDeviceSize size = (VkDeviceSize)vb.sizeOf();
-
-
-        VkBuffer       staging_buffer;
-        VkDeviceMemory staging_memory;
-        createBuffer(size,
-                     VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-                     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                     staging_buffer,
-                     staging_memory);
-
-        void* data;
-        VK_EXCEPT(vkMapMemory(m_device, staging_memory, 0, size, 0, &data));
-        std::memcpy(data, vb.dataPtr(), size);
-        vkUnmapMemory(m_device, staging_memory);
-
-
-        createBuffer(size,
-                     VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-                     VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-                     vertex_buffer,
-                     vertex_memory);
-
-        copyBuffer(staging_buffer, vertex_buffer, size);
-
-
-        vkDestroyBuffer(m_device, staging_buffer, nullptr);
-        vkFreeMemory(m_device, staging_memory, nullptr);
     }
+    VertexBuffer vertex_buffer(*this, vb);
 
-    VkBuffer              index_buffer = VK_NULL_HANDLE;
-    VkDeviceMemory        index_memory = VK_NULL_HANDLE;
+    IndexBuffer index_buffer(*this, std::vector<uint16_t>{ 0, 1, 2, 2, 3, 0 });
+
+    UniformBuffer uniform_buffer(*this, UniformBufferObject{});
     {
-        std::vector<uint16_t> indices = { 0, 1, 2, 2, 3, 0 };
-        VkDeviceSize size = (VkDeviceSize)(sizeof(uint16_t) * indices.size());
-
-
-        VkBuffer       staging_buffer;
-        VkDeviceMemory staging_memory;
-        createBuffer(size,
-                     VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-                     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                     staging_buffer,
-                     staging_memory);
-
-        void* data;
-        VK_EXCEPT(vkMapMemory(m_device, staging_memory, 0, size, 0, &data));
-        std::memcpy(data, indices.data(), size);
-        vkUnmapMemory(m_device, staging_memory);
-
-
-        createBuffer(size,
-                     VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
-                     VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-                     index_buffer,
-                     index_memory);
-
-        copyBuffer(staging_buffer, index_buffer, size);
-
-
-        vkDestroyBuffer(m_device, staging_buffer, nullptr);
-        vkFreeMemory(m_device, staging_memory, nullptr);
-    }
-
-    VkBuffer       uniform_buffer = VK_NULL_HANDLE;
-    VkDeviceMemory uniform_memory = VK_NULL_HANDLE;
-    {
-        VkDeviceSize size = (VkDeviceSize)(sizeof(UniformBufferObject));
-
-        createBuffer(size,
-                     VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-                     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                     uniform_buffer,
-                     uniform_memory);
-
-        UniformBufferObject ubo{};
-        ubo.model       = glm::rotate(glm::mat4(1.0f), (float)glfwGetTime() * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-        ubo.view        = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-        ubo.proj        = glm::perspective(glm::radians(45.0f), m_window.getAspectRatio(), 0.1f, 10.0f);
-        ubo.proj[1][1] *= -1;
-
-        void* data;
-        VK_EXCEPT(vkMapMemory(m_device, uniform_memory, 0, size, 0, &data));
-        std::memcpy(data, &ubo, size);
-        vkUnmapMemory(m_device, uniform_memory);
+        auto ubo         = uniform_buffer.makeMapper(*this);
+        ubo->model       = glm::rotate(glm::mat4(1.0f), (float)glfwGetTime() * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+        ubo->view        = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+        ubo->proj        = glm::perspective(glm::radians(45.0f), m_window.getAspectRatio(), 0.1f, 10.0f);
+        ubo->proj[1][1] *= -1;
     }
 
     vulkan::DescriptorSetContainer dset(m_device);
@@ -898,10 +739,7 @@ void Graphics::drawTestData()
         dset.initPipeLayout();
 
         {
-            VkDescriptorBufferInfo buffer_info{};
-            buffer_info.buffer = uniform_buffer;
-            buffer_info.offset = 0;
-            buffer_info.range  = sizeof(UniformBufferObject);
+            VkDescriptorBufferInfo buffer_info = uniform_buffer.makeInfo(0);
 
             std::vector<VkWriteDescriptorSet> writes;
             writes.push_back(dset.makeWrite(m_curr_frame_index, BINDING_UBO, &buffer_info));
@@ -934,7 +772,7 @@ void Graphics::drawTestData()
     }
 
 
-    VkCommandBuffer cmd = m_curr_cmd;
+    VkCommandBuffer cmd = getCurrSwapchainCmd();
 
     VkCommandBufferBeginInfo begin_info = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
     begin_info.pNext                    = nullptr;
@@ -975,32 +813,32 @@ void Graphics::drawTestData()
             vkCmdSetViewport(cmd, 0, 1, &viewport);
             vkCmdSetScissor(cmd, 0, 1, &area);
 
-            VkBuffer     vertex_buffers[] = { vertex_buffer };
-            VkDeviceSize offsets[]        = { 0 };
+            vertex_buffer.bind(*this);
 
-            vkCmdBindVertexBuffers(cmd, 0, 1, vertex_buffers, offsets);
-            vkCmdBindIndexBuffer(cmd, index_buffer, 0, VK_INDEX_TYPE_UINT16);
+            index_buffer.bind(*this);
 
-            vkCmdDrawIndexed(cmd, 6, 1, 0, 0, 0);
+            vkCmdDrawIndexed(cmd, index_buffer.getCount(), 1, 0, 0, 0);
         }
         vkCmdEndRenderPass(cmd);
     }
     VK_EXCEPT(vkEndCommandBuffer(cmd));
 
 
-    VkPipelineStageFlags submit_wait_stages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
+    VkPipelineStageFlags submit_wait_stages[]       = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
+    VkSemaphore          submit_wait_semaphores[]   = { getCurrSwapchainImgAvailableSemaphore() };
+    VkSemaphore          submit_signal_semaphores[] = { getCurrSwapchainRenderFinishSemaphore() };
 
     VkSubmitInfo submit_info{};
     submit_info.sType                = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     submit_info.pNext                = nullptr;
     submit_info.waitSemaphoreCount   = 1;
-    submit_info.pWaitSemaphores      = &m_curr_sc_img_available_semaphore;
+    submit_info.pWaitSemaphores      = submit_wait_semaphores;
     submit_info.pWaitDstStageMask    = submit_wait_stages;
     submit_info.commandBufferCount   = 1;
     submit_info.pCommandBuffers      = &cmd;
     submit_info.signalSemaphoreCount = 1;
-    submit_info.pSignalSemaphores    = &m_curr_sc_render_finish_semaphore;
-    VK_EXCEPT(vkQueueSubmit(m_queue_graphics, 1, &submit_info, m_curr_cmd_available_fence));
+    submit_info.pSignalSemaphores    = submit_signal_semaphores;
+    VK_EXCEPT(vkQueueSubmit(m_queue_graphics, 1, &submit_info, getCurrSwapchainCmdAvailableFence()));
 
 
     VkSwapchainKHR swapchains[] = { m_swapchain };
@@ -1008,16 +846,13 @@ void Graphics::drawTestData()
     VkPresentInfoKHR present_info   = { VK_STRUCTURE_TYPE_PRESENT_INFO_KHR };
     present_info.pNext              = nullptr;
     present_info.waitSemaphoreCount = 1;
-    present_info.pWaitSemaphores    = &m_curr_sc_render_finish_semaphore;
+    present_info.pWaitSemaphores    = submit_signal_semaphores;
     present_info.swapchainCount     = (uint32_t)std::size(swapchains);
     present_info.pSwapchains        = swapchains;
     present_info.pImageIndices      = &m_curr_sc_img_index;
     present_info.pResults           = nullptr;
 
     VK_EXCEPT(vkQueuePresentKHR(m_queue_graphics, &present_info));
-
-
-    m_curr_frame_index = (m_curr_frame_index + 1) % k_max_in_flight_count;
 
     waitIdle();
 
@@ -1026,15 +861,15 @@ void Graphics::drawTestData()
     {
         vkDestroyPipeline(m_device, graphics_pipeline, nullptr);
 
-        vkDestroyBuffer(m_device, vertex_buffer, nullptr);
-        vkDestroyBuffer(m_device, index_buffer, nullptr);
-        vkDestroyBuffer(m_device, uniform_buffer, nullptr);
-        vkFreeMemory(m_device, vertex_memory, nullptr);
-        vkFreeMemory(m_device, index_memory, nullptr);
-        vkFreeMemory(m_device, uniform_memory, nullptr);
+        vertex_buffer.destroy(*this);
+        index_buffer.destroy(*this);
+        uniform_buffer.destroy(*this);
 
         vkDestroyFramebuffer(m_device, framebuffer, nullptr);
 
         vkDestroyRenderPass(m_device, render_pass, nullptr);
     }
+
+
+    m_curr_frame_index = (m_curr_frame_index + 1) % k_max_in_flight_count;
 }

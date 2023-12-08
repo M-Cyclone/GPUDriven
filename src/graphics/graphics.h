@@ -10,6 +10,8 @@ class Window;
 
 class Graphics
 {
+    friend class GraphicsAvailable;
+
 public:
     static constexpr uint32_t k_invalid_queue_index = std::numeric_limits<uint32_t>::max();
     static constexpr uint32_t k_max_in_flight_count = 2;
@@ -39,6 +41,13 @@ public:
     void endFrame();
 
     void drawTestData();
+
+private:
+    VkCommandBuffer getCurrSwapchainCmd() noexcept { return m_swapchain_image_present_cmds[m_curr_frame_index]; }
+
+    VkSemaphore getCurrSwapchainRenderFinishSemaphore() noexcept { return m_swapchain_render_finished_semaphores[m_curr_frame_index]; }
+    VkSemaphore getCurrSwapchainImgAvailableSemaphore() noexcept { return m_swapchain_image_available_semaphores[m_curr_frame_index]; }
+    VkFence     getCurrSwapchainCmdAvailableFence() noexcept { return m_cmd_available_fences[m_curr_frame_index]; }
 
 private:
     Window& m_window;
@@ -75,11 +84,7 @@ private:
     std::vector<VkSemaphore>     m_swapchain_render_finished_semaphores;
     std::vector<VkSemaphore>     m_swapchain_image_available_semaphores;
     std::vector<VkFence>         m_cmd_available_fences;
-    uint32_t                     m_curr_frame_index = 0;
 
-    uint32_t        m_curr_sc_img_index               = 0;
-    VkSemaphore     m_curr_sc_render_finish_semaphore = VK_NULL_HANDLE;
-    VkSemaphore     m_curr_sc_img_available_semaphore = VK_NULL_HANDLE;
-    VkFence         m_curr_cmd_available_fence        = VK_NULL_HANDLE;
-    VkCommandBuffer m_curr_cmd                        = VK_NULL_HANDLE;
+    uint32_t m_curr_frame_index  = 0;
+    uint32_t m_curr_sc_img_index = 0;
 };
