@@ -8,26 +8,6 @@
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
-#ifdef PLATFORM_WINDOWS
-#    define GLFW_EXPOSE_NATIVE_WIN32
-#    include <GLFW/glfw3native.h>
-#endif  // PLATFORM_WINDOWS
-
-#define GLM_FORCE_RADIANS
-#define GLM_FORCE_DEFAULT_ALIGNED_GENTYPES
-#define GLM_FORCE_DEPTH_ZERO_TO_ONE
-#include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
-
-#include <stb/stb_image.h>
-
-#include "utils/load_shader.h"
-#include "utils/log.h"
-
-#include "shader_header/device.h"
-#include "shader_header/vertex_info.h"
-
-
 bool g_init_app = false;
 
 static constexpr const char* k_window_title  = "GPU Driven";
@@ -102,10 +82,6 @@ void App::run()
     m_gfx.waitIdle();
 }
 //
-//void App::init()
-//{
-//    m_alloc = std::make_unique<Allocator>(m_device);
-//
 //    {
 //        VkPhysicalDeviceProperties props;
 //        vkGetPhysicalDeviceProperties(m_device.activeGPU(), &props);
@@ -138,63 +114,9 @@ void App::run()
 //    }
 //
 //
-//    m_swapchain.querySwapchainInfo(m_device, k_window_width, k_window_height);
-//    m_swapchain.init(m_device);
-//
-//
 //    m_depth_format = m_alloc->findSupportedFormat({ VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT },
 //                                                  VK_IMAGE_TILING_OPTIMAL,
 //                                                  VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT);
-//
-//
-//    using VET = vertex::AttributeType;
-//    m_layout.append(VET::Pos3d);      // pos
-//    m_layout.append(VET::TexCoords);  // uv
-//
-//    createCmdPoolAndAllocateBuffer();
-//
-//    createVertexBuffer();
-//    createIndexBuffer();
-//    createUniformBuffers();
-//
-//    createTextureImageAndSampler();
-//
-//    createAttachmentBuffer();
-//
-//    createRenderPass();
-//
-//    createFramebuffer();
-//
-//    createGraphicsPipeline();
-//
-//    createSyncObjects();
-//}
-//
-//void App::exit()
-//{
-//    vkDeviceWaitIdle(m_device.device());
-//
-//    destroySyncObjects();
-//
-//    destroyGraphicsPipeline();
-//
-//    destroyFramebuffer();
-//
-//    destroyRenderPass();
-//
-//    destroyAttachmentBuffer();
-//
-//    destroyTextureImageAndSampler();
-//
-//    destroyUniformBuffers();
-//    destroyIndexBuffer();
-//    destroyVertexBuffer();
-//
-//    destroyCmdPoolAndDeallocateBuffer();
-//
-//    m_swapchain.deinit(m_device);
-//
-//    m_device.deinit();
 //}
 //
 //void App::createGraphicsPipeline()
@@ -256,201 +178,6 @@ void App::run()
 //    m_pipeline = pgen.createPipeline();
 //
 //    pgen.clearShaders();
-//}
-//
-//void App::destroyGraphicsPipeline()
-//{
-//    vkDestroyPipeline(m_device.device(), m_pipeline, nullptr);
-//    m_dset.reset();
-//}
-//
-//void App::createFramebuffer()
-//{
-//    const size_t count = m_swapchain.getSwapchainImageCount();
-//
-//    VkExtent2D extent = m_swapchain.getSwapchainImageExtent();
-//
-//    m_framebuffers.resize(count);
-//
-//    for (size_t i = 0; i < count; ++i)
-//    {
-//        std::array<VkImageView, 3> attachments = { m_color_buffer.view, m_depth_buffer.view, m_swapchain.getSwapchainImageView(i) };
-//
-//        VkFramebufferCreateInfo info = { VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO };
-//        info.pNext                   = nullptr;
-//        info.flags                   = 0;
-//        info.renderPass              = m_render_pass;
-//        info.attachmentCount         = static_cast<uint32_t>(attachments.size());
-//        info.pAttachments            = attachments.data();
-//        info.width                   = extent.width;
-//        info.height                  = extent.height;
-//        info.layers                  = 1;
-//
-//        NVVK_CHECK(vkCreateFramebuffer(m_device.device(), &info, nullptr, &m_framebuffers[i]));
-//    }
-//}
-//
-//void App::destroyFramebuffer()
-//{
-//    for (VkFramebuffer& fb : m_framebuffers)
-//    {
-//        vkDestroyFramebuffer(m_device.device(), fb, nullptr);
-//        fb = VK_NULL_HANDLE;
-//    }
-//}
-//
-//void App::createCmdPoolAndAllocateBuffer()
-//{
-//    const size_t count = m_swapchain.getSwapchainImageCount();
-//
-//    VkCommandPoolCreateInfo info = { VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO };
-//    info.pNext                   = nullptr;
-//    info.flags                   = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-//    info.queueFamilyIndex        = m_device.getQueueGraphicsIndex();
-//
-//    NVVK_CHECK(vkCreateCommandPool(m_device.device(), &info, nullptr, &m_cmd_pool));
-//
-//
-//    VkCommandBufferAllocateInfo alloc_info{};
-//    alloc_info.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-//    alloc_info.pNext              = 0;
-//    alloc_info.commandPool        = m_cmd_pool;
-//    alloc_info.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-//    alloc_info.commandBufferCount = count;
-//
-//    m_cmds.resize(count);
-//    NVVK_CHECK(vkAllocateCommandBuffers(m_device.device(), &alloc_info, m_cmds.data()));
-//}
-//
-//void App::destroyCmdPoolAndDeallocateBuffer()
-//{
-//    vkFreeCommandBuffers(m_device.device(), m_cmd_pool, m_swapchain.getSwapchainImageCount(), m_cmds.data());
-//    vkDestroyCommandPool(m_device.device(), m_cmd_pool, nullptr);
-//}
-//
-//void App::createSyncObjects()
-//{
-//    m_img_draw_finished_semaphores.resize(k_max_in_flight_count);
-//    m_img_available_semaphores.resize(k_max_in_flight_count);
-//    m_cmd_available_fences.resize(k_max_in_flight_count);
-//
-//    VkSemaphoreCreateInfo semaphore_info = { VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO };
-//    semaphore_info.pNext                 = nullptr;
-//    semaphore_info.flags                 = 0;
-//
-//    VkFenceCreateInfo fence_info = { VK_STRUCTURE_TYPE_FENCE_CREATE_INFO };
-//    fence_info.pNext             = nullptr;
-//    fence_info.flags             = VK_FENCE_CREATE_SIGNALED_BIT;
-//
-//    for (uint32_t i = 0; i < k_max_in_flight_count; ++i)
-//    {
-//        NVVK_CHECK(vkCreateSemaphore(m_device.device(), &semaphore_info, nullptr, &m_img_draw_finished_semaphores[i]));
-//        NVVK_CHECK(vkCreateSemaphore(m_device.device(), &semaphore_info, nullptr, &m_img_available_semaphores[i]));
-//        NVVK_CHECK(vkCreateFence(m_device.device(), &fence_info, nullptr, &m_cmd_available_fences[i]));
-//    }
-//}
-//
-//void App::destroySyncObjects()
-//{
-//    for (VkSemaphore s : m_img_draw_finished_semaphores)
-//    {
-//        vkDestroySemaphore(m_device.device(), s, nullptr);
-//    }
-//    for (VkSemaphore s : m_img_available_semaphores)
-//    {
-//        vkDestroySemaphore(m_device.device(), s, nullptr);
-//    }
-//    for (VkFence f : m_cmd_available_fences)
-//    {
-//        vkDestroyFence(m_device.device(), f, nullptr);
-//    }
-//}
-//
-//void App::createVertexBuffer()
-//{
-//    using VET = vertex::AttributeType;
-//
-//    vertex::Buffer vb(m_layout, 8);
-//    vb[0].attr<VET::Pos3d>()     = { -0.5f, -0.5f, +0.0f };
-//    vb[1].attr<VET::Pos3d>()     = { +0.5f, -0.5f, +0.0f };
-//    vb[2].attr<VET::Pos3d>()     = { +0.5f, +0.5f, +0.0f };
-//    vb[3].attr<VET::Pos3d>()     = { -0.5f, +0.5f, +0.0f };
-//    vb[4].attr<VET::Pos3d>()     = { -0.5f, -0.5f, -0.5f };
-//    vb[5].attr<VET::Pos3d>()     = { +0.5f, -0.5f, -0.5f };
-//    vb[6].attr<VET::Pos3d>()     = { +0.5f, +0.5f, -0.5f };
-//    vb[7].attr<VET::Pos3d>()     = { -0.5f, +0.5f, -0.5f };
-//    vb[0].attr<VET::TexCoords>() = { 1.0f, 0.0f };
-//    vb[1].attr<VET::TexCoords>() = { 0.0f, 0.0f };
-//    vb[2].attr<VET::TexCoords>() = { 0.0f, 1.0f };
-//    vb[3].attr<VET::TexCoords>() = { 1.0f, 1.0f };
-//    vb[4].attr<VET::TexCoords>() = { 1.0f, 0.0f };
-//    vb[5].attr<VET::TexCoords>() = { 0.0f, 0.0f };
-//    vb[6].attr<VET::TexCoords>() = { 0.0f, 1.0f };
-//    vb[7].attr<VET::TexCoords>() = { 1.0f, 1.0f };
-//
-//    m_vertex_buffer = m_alloc->createVertexBuffer(vb);
-//
-//
-//    Buffer staging_buffer = m_alloc->createStagingBuffer(vb.data());
-//    {
-//        VkCommandBuffer cmd = createTempCommandBuffer();
-//        Allocator::copyBuffer(cmd, staging_buffer.buffer, m_vertex_buffer.buffer, vb.sizeOf());
-//        submitAndWaitTempCommandBuffer(cmd, m_device.queueGraphics());
-//        freeTempCommandBuffer(cmd);
-//    }
-//    m_alloc->destroyBuffer(staging_buffer);
-//}
-//
-//void App::destroyVertexBuffer()
-//{
-//    m_alloc->destroyBuffer(m_vertex_buffer);
-//}
-//
-//void App::createIndexBuffer()
-//{
-//    const std::vector<uint16_t> indices = { 0, 1, 2, 2, 3, 0, 4, 5, 6, 6, 7, 4 };
-//
-//    m_index_buffer = m_alloc->createIndexBuffer(indices);
-//
-//
-//    VkDeviceSize buffer_size    = static_cast<VkDeviceSize>(sizeof(uint16_t) * indices.size());
-//    Buffer       staging_buffer = m_alloc->createStagingBuffer(buffer_size, indices.data());
-//    {
-//        VkCommandBuffer cmd = createTempCommandBuffer();
-//        Allocator::copyBuffer(cmd, staging_buffer.buffer, m_index_buffer.buffer, buffer_size);
-//        submitAndWaitTempCommandBuffer(cmd, m_device.queueGraphics());
-//        freeTempCommandBuffer(cmd);
-//    }
-//    m_alloc->destroyBuffer(staging_buffer);
-//}
-//
-//void App::destroyIndexBuffer()
-//{
-//    m_alloc->destroyBuffer(m_index_buffer);
-//}
-//
-//void App::createUniformBuffers()
-//{
-//    VkDeviceSize buffer_size = static_cast<VkDeviceSize>(sizeof(UniformBufferObject));
-//
-//    m_uniform_buffers.reserve(k_max_in_flight_count);
-//    m_uniform_buffers_mapped.resize(k_max_in_flight_count);
-//
-//    for (size_t i = 0; i < k_max_in_flight_count; i++)
-//    {
-//        m_uniform_buffers.push_back(m_alloc->createUniformBuffer(buffer_size));
-//
-//        m_uniform_buffers_mapped[i] = m_device.mapMemory(m_uniform_buffers[i].memory, 0, buffer_size, 0);
-//    }
-//}
-//
-//void App::destroyUniformBuffers()
-//{
-//    for (size_t i = 0; i < k_max_in_flight_count; i++)
-//    {
-//        m_device.unmapMemory(m_uniform_buffers[i].memory);
-//        m_alloc->destroyBuffer(m_uniform_buffers[i]);
-//    }
 //}
 //
 //void App::createAttachmentBuffer()
@@ -656,52 +383,9 @@ void App::run()
 //    vkDestroySampler(m_device.device(), m_sampler, nullptr);
 //    m_alloc->destroyImage(m_texture);
 //}
-//
-//VkCommandBuffer App::createTempCommandBuffer() const
-//{
-//    VkCommandBufferAllocateInfo allo_iInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO };
-//    allo_iInfo.level                       = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-//    allo_iInfo.commandPool                 = m_cmd_pool;
-//    allo_iInfo.commandBufferCount          = 1;
-//
-//    VkCommandBuffer cmd;
-//    NVVK_CHECK(vkAllocateCommandBuffers(m_device.device(), &allo_iInfo, &cmd));
-//
-//    VkCommandBufferBeginInfo beginInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
-//    beginInfo.flags                    = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-//
-//    NVVK_CHECK(vkBeginCommandBuffer(cmd, &beginInfo));
-//
-//    return cmd;
-//}
-//
-//void App::submitAndWaitTempCommandBuffer(VkCommandBuffer cmd, VkQueue queue) const
-//{
-//    NVVK_CHECK(vkEndCommandBuffer(cmd));
-//
-//    VkSubmitInfo submitInfo       = { VK_STRUCTURE_TYPE_SUBMIT_INFO };
-//    submitInfo.commandBufferCount = 1;
-//    submitInfo.pCommandBuffers    = &cmd;
-//
-//    NVVK_CHECK(vkQueueSubmit(queue, 1, &submitInfo, VK_NULL_HANDLE));
-//    NVVK_CHECK(vkQueueWaitIdle(queue));
-//}
-//
-//void App::freeTempCommandBuffer(VkCommandBuffer cmd) const
-//{
-//    vkFreeCommandBuffers(m_device.device(), m_cmd_pool, 1, &cmd);
-//}
-//
+
 void App::update(float delta_time, float total_time)
 {
-    //UniformBufferObject ubo{};
-    //ubo.model       = glm::rotate(glm::mat4(1.0f), total_time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-    //ubo.view        = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-    //ubo.proj        = glm::perspective(glm::radians(45.0f), m_window.getAspectRatio(), 0.1f, 10.0f);
-    //ubo.proj[1][1] *= -1;
-
-    //std::memcpy(m_uniform_buffers_mapped[m_curr_frame_idx], &ubo, sizeof(ubo));
-
     m_gfx.beginFrame();
     m_gfx.drawTestData();
     m_gfx.endFrame();

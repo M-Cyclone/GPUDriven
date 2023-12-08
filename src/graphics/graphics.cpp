@@ -3,7 +3,24 @@
 #include <sstream>
 #include <string>
 
+#define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
+
+#ifdef PLATFORM_WINDOWS
+#    define GLFW_EXPOSE_NATIVE_WIN32
+#    include <GLFW/glfw3native.h>
+#endif  // PLATFORM_WINDOWS
+
+#define GLM_FORCE_RADIANS
+#define GLM_FORCE_DEFAULT_ALIGNED_GENTYPES
+#define GLM_FORCE_DEPTH_ZERO_TO_ONE
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+
+#include <stb/stb_image.h>
+
+#include "shader_header/device.h"
+#include "shader_header/vertex_info.h"
 
 #include "core/window.h"
 
@@ -815,10 +832,10 @@ void Graphics::drawTestData()
         vkFreeMemory(m_device, staging_memory, nullptr);
     }
 
-    std::vector<uint16_t> indices      = { 0, 1, 2, 2, 3, 0 };
     VkBuffer              index_buffer = VK_NULL_HANDLE;
     VkDeviceMemory        index_memory = VK_NULL_HANDLE;
     {
+        std::vector<uint16_t> indices = { 0, 1, 2, 2, 3, 0 };
         VkDeviceSize size = (VkDeviceSize)(sizeof(uint16_t) * indices.size());
 
 
@@ -849,12 +866,47 @@ void Graphics::drawTestData()
         vkFreeMemory(m_device, staging_memory, nullptr);
     }
 
+    VkBuffer       uniform_buffer = VK_NULL_HANDLE;
+    VkDeviceMemory uniform_memory = VK_NULL_HANDLE;
+    {
+        VkDeviceSize size = (VkDeviceSize)(sizeof(UniformBufferObject));
+
+        createBuffer(size,
+                     VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                     uniform_buffer,
+                     uniform_memory);
+
+        UniformBufferObject ubo{};
+        ubo.model       = glm::rotate(glm::mat4(1.0f), (float)glfwGetTime() * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+        ubo.view        = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+        ubo.proj        = glm::perspective(glm::radians(45.0f), m_window.getAspectRatio(), 0.1f, 10.0f);
+        ubo.proj[1][1] *= -1;
+
+        void* data;
+        VK_EXCEPT(vkMapMemory(m_device, uniform_memory, 0, size, 0, &data));
+        std::memcpy(data, &ubo, size);
+        vkUnmapMemory(m_device, uniform_memory);
+    }
+
     vulkan::DescriptorSetContainer dset(m_device);
     VkPipeline                     graphics_pipeline = VK_NULL_HANDLE;
     {
+        dset.addBinding(BINDING_UBO, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_ALL);
         dset.initLayout();
         dset.initPool(k_max_in_flight_count);
         dset.initPipeLayout();
+
+        {
+            VkDescriptorBufferInfo buffer_info{};
+            buffer_info.buffer = uniform_buffer;
+            buffer_info.offset = 0;
+            buffer_info.range  = sizeof(UniformBufferObject);
+
+            std::vector<VkWriteDescriptorSet> writes;
+            writes.push_back(dset.makeWrite(m_curr_frame_index, BINDING_UBO, &buffer_info));
+            vkUpdateDescriptorSets(m_device, (uint32_t)writes.size(), writes.data(), 0, nullptr);
+        }
 
 
         const uint32_t binding = 0;
@@ -976,8 +1028,10 @@ void Graphics::drawTestData()
 
         vkDestroyBuffer(m_device, vertex_buffer, nullptr);
         vkDestroyBuffer(m_device, index_buffer, nullptr);
+        vkDestroyBuffer(m_device, uniform_buffer, nullptr);
         vkFreeMemory(m_device, vertex_memory, nullptr);
         vkFreeMemory(m_device, index_memory, nullptr);
+        vkFreeMemory(m_device, uniform_memory, nullptr);
 
         vkDestroyFramebuffer(m_device, framebuffer, nullptr);
 

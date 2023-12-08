@@ -44,12 +44,6 @@ private:
 
     Graphics m_gfx;
 
-    // std::unique_ptr<Allocator> m_alloc;
-
-    // vertex::Layout m_layout;
-    // Buffer         m_vertex_buffer;
-    // Buffer         m_index_buffer;
-
     // std::vector<Buffer> m_uniform_buffers;
     // std::vector<void*>  m_uniform_buffers_mapped;
 
