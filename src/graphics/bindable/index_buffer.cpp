@@ -56,7 +56,7 @@ IndexBuffer::IndexBuffer(Graphics& gfx, std::span<const uint32_t> ib)
     : IndexBuffer(gfx, ib.data(), (uint32_t)ib.size(), VK_INDEX_TYPE_UINT32)
 {}
 
-void IndexBuffer::bind_impl(Graphics& gfx) noexcept
+void IndexBuffer::bind_impl(Graphics& gfx) const noexcept
 {
     vkCmdBindIndexBuffer(getCurrSwapchainCmd(gfx), m_buffer, 0, m_type);
 }

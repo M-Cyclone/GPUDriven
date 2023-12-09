@@ -6,8 +6,8 @@ template <typename T>
 class UniformBuffer : public Buffer
 {
 public:
-    UniformBuffer(Graphics& gfx, const T& data)
-        : m_size((VkDeviceSize)(sizeof(UniformBufferObject)))
+    explicit UniformBuffer(Graphics& gfx)
+        : m_size((VkDeviceSize)(sizeof(T)))
     {
         create(gfx,
                m_size,
@@ -19,6 +19,7 @@ public:
     UniformBuffer(const UniformBuffer&)            = delete;
     UniformBuffer& operator=(const UniformBuffer&) = delete;
 
+public:
     Mapper<T> makeMapper(Graphics& gfx) { return Mapper<T>(gfx, m_memory, m_size, 0); }
 
     VkDescriptorBufferInfo makeInfo(VkDeviceSize offset) const
@@ -26,16 +27,18 @@ public:
         return VkDescriptorBufferInfo{ .buffer = m_buffer, .offset = offset, .range = sizeof(T) };
     }
 
-    void destroy(Graphics& gfx) noexcept
+    void reset(Graphics& gfx) noexcept
     {
         m_size = 0;
         if (m_buffer != VK_NULL_HANDLE)
         {
             vkDestroyBuffer(getDevice(gfx), m_buffer, nullptr);
+            m_buffer = VK_NULL_HANDLE;
         }
         if (m_memory != VK_NULL_HANDLE)
         {
             vkFreeMemory(getDevice(gfx), m_memory, nullptr);
+            m_memory = VK_NULL_HANDLE;
         }
     }
 

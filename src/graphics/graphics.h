@@ -1,6 +1,7 @@
 #pragma once
 #include <numeric>
 #include <vector>
+#include <span>
 
 #include <vulkan/vulkan.h>
 
@@ -41,6 +42,10 @@ public:
     void endFrame();
 
     void drawTestData();
+
+    void drawIndexed(uint32_t count);
+
+    void updateDescriptorSets(std::span<const VkWriteDescriptorSet> writes, std::span<const VkCopyDescriptorSet> copies);
 
 private:
     VkCommandBuffer getCurrSwapchainCmd() noexcept { return m_swapchain_image_present_cmds[m_curr_frame_index]; }

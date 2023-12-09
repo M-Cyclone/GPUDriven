@@ -45,7 +45,7 @@ VertexBuffer::VertexBuffer(Graphics& gfx, const vertex::Buffer& vb)
     }
 }
 
-void VertexBuffer::bind_impl(Graphics& gfx) noexcept
+void VertexBuffer::bind_impl(Graphics& gfx) const noexcept
 {
     vkCmdBindVertexBuffers(getCurrSwapchainCmd(gfx), 0, 1, &m_buffer, &m_offset);
 }

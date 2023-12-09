@@ -15,9 +15,10 @@ public:
     VertexBuffer(Graphics& gfx, const vertex::Buffer& vb);
     VertexBuffer(const VertexBuffer&)            = delete;
     VertexBuffer& operator=(const VertexBuffer&) = delete;
+    virtual ~VertexBuffer() noexcept             = default;
 
 private:
-    void bind_impl(Graphics& gfx) noexcept;
+    void bind_impl(Graphics& gfx) const noexcept;
     void destroy_impl(Graphics& gfx) noexcept;
 
     void resetToDefault() noexcept;

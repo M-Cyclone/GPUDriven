@@ -44,7 +44,7 @@ add_files(
     "./extern_impl/*.cpp",
     "./graphics/*.cpp",
     "./graphics/bindable/*.cpp",
-    -- "./graphics/drawable/*.cpp",
+    "./graphics/drawable/*.cpp",
     "./graphics/resource/*.cpp",
     "./graphics/vulkan_helper/*.cpp",
     "./utils/*.cpp"

@@ -24,7 +24,7 @@ public:
     uint32_t getCount() const { return m_count; }
 
 private:
-    void bind_impl(Graphics& gfx) noexcept;
+    void bind_impl(Graphics& gfx) const noexcept;
     void destroy_impl(Graphics& gfx) noexcept;
 
     void resetToDefault() noexcept;

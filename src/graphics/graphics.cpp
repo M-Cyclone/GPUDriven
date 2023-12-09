@@ -11,16 +11,13 @@
 #    include <GLFW/glfw3native.h>
 #endif  // PLATFORM_WINDOWS
 
+#include <stb/stb_image.h>
+
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEFAULT_ALIGNED_GENTYPES
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
-
-#include <stb/stb_image.h>
-
-#include "shader_header/device.h"
-#include "shader_header/vertex_info.h"
 
 #include "core/window.h"
 
@@ -28,15 +25,19 @@
 #include "utils/log.h"
 #include "utils/scienum.h"
 
-#include "graphics/vertex.h"
-
 #include "graphics/graphics_throw_macros.h"
 
-#include "graphics/bindable/graphics_pipeline.h"
-#include "graphics/bindable/index_buffer.h"
-#include "graphics/bindable/vertex_buffer.h"
+#include "shader_header/device.h"
+#include "shader_header/vertex_info.h"
+
+#include "graphics/vertex.h"
 
 #include "graphics/resource/uniform_buffer.h"
+
+#include "graphics/vulkan_helper/pipeline_helper.h"
+#include "graphics/vulkan_helper/descriptorsets_helper.h"
+
+#include "graphics/drawable/box.h"
 
 Graphics::VkException::VkException(int line, const char* file, VkResult result) noexcept
     : EngineDefaultException(line, file)
@@ -701,37 +702,23 @@ void Graphics::drawTestData()
     }
 
     vertex::Layout layout;
-    {
-        layout.append(vertex::AttributeType::Pos3d);
-        layout.append(vertex::AttributeType::Color3);
-    }
-    vertex::Buffer vb(layout, 4);
-    {
-        vb[0].attr<vertex::AttributeType::Pos3d>()  = { -0.5f, -0.5f, +0.0f };
-        vb[1].attr<vertex::AttributeType::Pos3d>()  = { +0.5f, -0.5f, +0.0f };
-        vb[2].attr<vertex::AttributeType::Pos3d>()  = { +0.5f, +0.5f, +0.0f };
-        vb[3].attr<vertex::AttributeType::Pos3d>()  = { -0.5f, +0.5f, +0.0f };
-        vb[0].attr<vertex::AttributeType::Color3>() = { 1.0f, 0.0f, 0.0f };
-        vb[1].attr<vertex::AttributeType::Color3>() = { 0.0f, 1.0f, 0.0f };
-        vb[2].attr<vertex::AttributeType::Color3>() = { 0.0f, 0.0f, 1.0f };
-        vb[3].attr<vertex::AttributeType::Color3>() = { 1.0f, 1.0f, 0.0f };
-    }
-    VertexBuffer vertex_buffer(*this, vb);
+    layout.append(vertex::AttributeType::Pos3d);
+    layout.append(vertex::AttributeType::TexCoords);
+    Box box(*this, layout);
+    box.update(0.0f, (float)glfwGetTime());
 
-    IndexBuffer index_buffer(*this, std::vector<uint16_t>{ 0, 1, 2, 2, 3, 0 });
-
-    UniformBuffer uniform_buffer(*this, UniformBufferObject{});
+    UniformBuffer<UniformBufferObject> uniform_buffer(*this);
     {
         auto ubo         = uniform_buffer.makeMapper(*this);
-        ubo->model       = glm::rotate(glm::mat4(1.0f), (float)glfwGetTime() * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+        ubo->model       = box.getModelMatrix();
         ubo->view        = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
         ubo->proj        = glm::perspective(glm::radians(45.0f), m_window.getAspectRatio(), 0.1f, 10.0f);
         ubo->proj[1][1] *= -1;
     }
 
-    GraphicsPipeline pipeline(*this);
+    vulkan::DescriptorSetContainer dset(m_device);
+    VkPipeline                     graphics_pipeline = VK_NULL_HANDLE;
     {
-        auto& dset = pipeline.getDescriptorSetContainer();
         dset.addBinding(BINDING_UBO, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_ALL);
         dset.initLayout();
         dset.initPool(k_max_in_flight_count);
@@ -745,7 +732,6 @@ void Graphics::drawTestData()
             vkUpdateDescriptorSets(m_device, (uint32_t)writes.size(), writes.data(), 0, nullptr);
         }
 
-
         const uint32_t binding = 0;
 
         VkVertexInputBindingDescription binding_desc = layout.getBindingDesc(binding);
@@ -754,7 +740,7 @@ void Graphics::drawTestData()
         layout.getAttributeDescs(binding, attribute_descs);
 
         vulkan::GraphicsPipelineState pstate{};
-        pstate.rasterizationState.cullMode = VK_CULL_MODE_NONE;
+        pstate.rasterizationState.cullMode = VK_CULL_MODE_BACK_BIT;
         pstate.addBindingDescription(binding_desc);
         pstate.addAttributeDescriptions(attribute_descs);
 
@@ -762,7 +748,7 @@ void Graphics::drawTestData()
         pgen.addShader(loadShaderCode("test.vert.spv"), VK_SHADER_STAGE_VERTEX_BIT, "main");
         pgen.addShader(loadShaderCode("test.frag.spv"), VK_SHADER_STAGE_FRAGMENT_BIT, "main");
 
-        pipeline.reinit(*this, pgen);
+        graphics_pipeline = pgen.createPipeline();
 
         pgen.clearShaders();
     }
@@ -795,16 +781,21 @@ void Graphics::drawTestData()
         render_pass_begin.pClearValues    = &clear_color;
         vkCmdBeginRenderPass(cmd, &render_pass_begin, VK_SUBPASS_CONTENTS_INLINE);
         {
-            pipeline.bind(*this);
+            vkCmdBindDescriptorSets(cmd,
+                                    VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                    dset.getPipeLayout(),
+                                    0,
+                                    1,
+                                    dset.getSets(m_curr_frame_index),
+                                    0,
+                                    nullptr);
+
+            vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, graphics_pipeline);
 
             vkCmdSetViewport(cmd, 0, 1, &viewport);
             vkCmdSetScissor(cmd, 0, 1, &area);
 
-            vertex_buffer.bind(*this);
-
-            index_buffer.bind(*this);
-
-            vkCmdDrawIndexed(cmd, index_buffer.getCount(), 1, 0, 0, 0);
+            box.draw(*this);
         }
         vkCmdEndRenderPass(cmd);
     }
@@ -846,10 +837,11 @@ void Graphics::drawTestData()
 
     // Destroy resources.
     {
-        pipeline.destroy(*this);
-        vertex_buffer.destroy(*this);
-        index_buffer.destroy(*this);
-        uniform_buffer.destroy(*this);
+        vkDestroyPipeline(m_device, graphics_pipeline, nullptr);
+
+        box.destroy(*this);
+
+        uniform_buffer.reset(*this);
 
         vkDestroyFramebuffer(m_device, framebuffer, nullptr);
 
@@ -858,4 +850,14 @@ void Graphics::drawTestData()
 
 
     m_curr_frame_index = (m_curr_frame_index + 1) % k_max_in_flight_count;
+}
+
+void Graphics::drawIndexed(uint32_t count)
+{
+    vkCmdDrawIndexed(getCurrSwapchainCmd(), count, 1, 0, 0, 0);
+}
+
+void Graphics::updateDescriptorSets(std::span<const VkWriteDescriptorSet> writes, std::span<const VkCopyDescriptorSet> copies)
+{
+    vkUpdateDescriptorSets(m_device, (uint32_t)writes.size(), writes.data(), (uint32_t)copies.size(), copies.data());
 }
