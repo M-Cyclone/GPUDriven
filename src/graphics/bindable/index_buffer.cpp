@@ -63,7 +63,6 @@ void IndexBuffer::bind_impl(Graphics& gfx) noexcept
 
 void IndexBuffer::destroy_impl(Graphics& gfx) noexcept
 {
-    m_size = 0;
     if (m_buffer != VK_NULL_HANDLE)
     {
         vkDestroyBuffer(getDevice(gfx), m_buffer, nullptr);
@@ -72,4 +71,14 @@ void IndexBuffer::destroy_impl(Graphics& gfx) noexcept
     {
         vkFreeMemory(getDevice(gfx), m_memory, nullptr);
     }
+    resetToDefault();
+}
+
+void IndexBuffer::resetToDefault() noexcept
+{
+    m_size   = 0;
+    m_buffer = VK_NULL_HANDLE;
+    m_memory = VK_NULL_HANDLE;
+    m_count  = 0;
+    m_type   = VK_INDEX_TYPE_NONE_KHR;
 }

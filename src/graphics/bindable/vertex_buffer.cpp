@@ -52,7 +52,6 @@ void VertexBuffer::bind_impl(Graphics& gfx) noexcept
 
 void VertexBuffer::destroy_impl(Graphics& gfx) noexcept
 {
-    m_size = 0;
     if (m_buffer != VK_NULL_HANDLE)
     {
         vkDestroyBuffer(getDevice(gfx), m_buffer, nullptr);
@@ -61,5 +60,13 @@ void VertexBuffer::destroy_impl(Graphics& gfx) noexcept
     {
         vkFreeMemory(getDevice(gfx), m_memory, nullptr);
     }
+    resetToDefault();
+}
+
+void VertexBuffer::resetToDefault() noexcept
+{
+    m_size   = 0;
+    m_buffer = VK_NULL_HANDLE;
     m_offset = 0;
+    m_memory = VK_NULL_HANDLE;
 }

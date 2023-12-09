@@ -28,14 +28,13 @@
 #include "utils/log.h"
 #include "utils/scienum.h"
 
-#include "graphics/descriptorsets.h"
-#include "graphics/pipeline.h"
 #include "graphics/vertex.h"
 
 #include "graphics/graphics_throw_macros.h"
 
-#include "graphics/bindable/vertex_buffer.h"
+#include "graphics/bindable/graphics_pipeline.h"
 #include "graphics/bindable/index_buffer.h"
+#include "graphics/bindable/vertex_buffer.h"
 
 #include "graphics/resource/uniform_buffer.h"
 
@@ -730,9 +729,9 @@ void Graphics::drawTestData()
         ubo->proj[1][1] *= -1;
     }
 
-    vulkan::DescriptorSetContainer dset(m_device);
-    VkPipeline                     graphics_pipeline = VK_NULL_HANDLE;
+    GraphicsPipeline pipeline(*this);
     {
+        auto& dset = pipeline.getDescriptorSetContainer();
         dset.addBinding(BINDING_UBO, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_ALL);
         dset.initLayout();
         dset.initPool(k_max_in_flight_count);
@@ -749,10 +748,7 @@ void Graphics::drawTestData()
 
         const uint32_t binding = 0;
 
-        VkVertexInputBindingDescription binding_desc{};
-        binding_desc.binding   = binding;
-        binding_desc.stride    = (uint32_t)layout.getStride();
-        binding_desc.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+        VkVertexInputBindingDescription binding_desc = layout.getBindingDesc(binding);
 
         std::vector<VkVertexInputAttributeDescription> attribute_descs;
         layout.getAttributeDescs(binding, attribute_descs);
@@ -766,7 +762,7 @@ void Graphics::drawTestData()
         pgen.addShader(loadShaderCode("test.vert.spv"), VK_SHADER_STAGE_VERTEX_BIT, "main");
         pgen.addShader(loadShaderCode("test.frag.spv"), VK_SHADER_STAGE_FRAGMENT_BIT, "main");
 
-        graphics_pipeline = pgen.createPipeline();
+        pipeline.reinit(*this, pgen);
 
         pgen.clearShaders();
     }
@@ -799,16 +795,7 @@ void Graphics::drawTestData()
         render_pass_begin.pClearValues    = &clear_color;
         vkCmdBeginRenderPass(cmd, &render_pass_begin, VK_SUBPASS_CONTENTS_INLINE);
         {
-            vkCmdBindDescriptorSets(cmd,
-                                    VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                    dset.getPipeLayout(),
-                                    0,
-                                    1,
-                                    dset.getSets(m_curr_frame_index),
-                                    0,
-                                    nullptr);
-
-            vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, graphics_pipeline);
+            pipeline.bind(*this);
 
             vkCmdSetViewport(cmd, 0, 1, &viewport);
             vkCmdSetScissor(cmd, 0, 1, &area);
@@ -859,8 +846,7 @@ void Graphics::drawTestData()
 
     // Destroy resources.
     {
-        vkDestroyPipeline(m_device, graphics_pipeline, nullptr);
-
+        pipeline.destroy(*this);
         vertex_buffer.destroy(*this);
         index_buffer.destroy(*this);
         uniform_buffer.destroy(*this);

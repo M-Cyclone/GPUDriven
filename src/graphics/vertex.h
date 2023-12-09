@@ -215,7 +215,7 @@ public:
         return false;
     }
 
-    void getAttributeDescs(uint32_t binding, std::vector<VkVertexInputAttributeDescription>& descs)
+    void getAttributeDescs(uint32_t binding, std::vector<VkVertexInputAttributeDescription>& descs) const
     {
         for (size_t i = 0, n = m_elements.size(); i < n; ++i)
         {
@@ -229,6 +229,16 @@ public:
             desc.format   = format;
             desc.offset   = offset;
         }
+    }
+
+    VkVertexInputBindingDescription getBindingDesc(uint32_t binding) const
+    {
+        VkVertexInputBindingDescription desc{};
+        desc.binding   = binding;
+        desc.stride    = (uint32_t)getStride();
+        desc.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+
+        return desc;
     }
 
     Attribute operator[](size_t idx) const { return m_elements[idx]; }

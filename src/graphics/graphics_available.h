@@ -27,4 +27,6 @@ protected:
     {
         return gfx.m_swapchain_image_present_cmds[gfx.m_curr_frame_index];
     }
+
+    static uint32_t getCurrFrameIndex(Graphics& gfx) noexcept { return gfx.m_curr_frame_index; }
 };

@@ -46,6 +46,7 @@ add_files(
     "./graphics/bindable/*.cpp",
     -- "./graphics/drawable/*.cpp",
     "./graphics/resource/*.cpp",
+    "./graphics/vulkan_helper/*.cpp",
     "./utils/*.cpp"
 )
 add_headerfiles(
@@ -55,6 +56,7 @@ add_headerfiles(
     "./graphics/bindable/*.h",
     "./graphics/drawable/*.h",
     "./graphics/resource/*.h",
+    "./graphics/vulkan_helper/*.h",
     "./utils/*.h"
 )
 

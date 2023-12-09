@@ -20,6 +20,8 @@ private:
     void bind_impl(Graphics& gfx) noexcept;
     void destroy_impl(Graphics& gfx) noexcept;
 
+    void resetToDefault() noexcept;
+
 protected:
     VkDeviceSize   m_size   = 0;
     VkBuffer       m_buffer = VK_NULL_HANDLE;

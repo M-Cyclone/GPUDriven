@@ -33,110 +33,14 @@ struct GraphicsPipelineState
 {
     // Initialize the state to common values: triangle list topology, depth test enabled,
     // dynamic viewport and scissor, one render target, blending disabled
-    GraphicsPipelineState()
-    {
-        rasterizationState.flags                   = {};
-        rasterizationState.depthClampEnable        = {};
-        rasterizationState.rasterizerDiscardEnable = {};
-        setValue(rasterizationState.polygonMode, VK_POLYGON_MODE_FILL);
-        setValue(rasterizationState.cullMode, VK_CULL_MODE_BACK_BIT);
-        setValue(rasterizationState.frontFace, VK_FRONT_FACE_COUNTER_CLOCKWISE);
-
-        rasterizationState.depthBiasEnable         = {};
-        rasterizationState.depthBiasConstantFactor = {};
-        rasterizationState.depthBiasClamp          = {};
-        rasterizationState.depthBiasSlopeFactor    = {};
-        rasterizationState.lineWidth               = 1.f;
-
-        inputAssemblyState.flags = {};
-        setValue(inputAssemblyState.topology, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
-        inputAssemblyState.primitiveRestartEnable = {};
-
-
-        colorBlendState.flags         = {};
-        colorBlendState.logicOpEnable = {};
-        setValue(colorBlendState.logicOp, VK_LOGIC_OP_CLEAR);
-        colorBlendState.attachmentCount = {};
-        colorBlendState.pAttachments    = {};
-        for (int i = 0; i < 4; i++)
-        {
-            colorBlendState.blendConstants[i] = 0.f;
-        }
-
-
-        dynamicState.flags             = {};
-        dynamicState.dynamicStateCount = {};
-        dynamicState.pDynamicStates    = {};
-
-
-        vertexInputState.flags                           = {};
-        vertexInputState.vertexBindingDescriptionCount   = {};
-        vertexInputState.pVertexBindingDescriptions      = {};
-        vertexInputState.vertexAttributeDescriptionCount = {};
-        vertexInputState.pVertexAttributeDescriptions    = {};
-
-
-        viewportState.flags         = {};
-        viewportState.viewportCount = {};
-        viewportState.pViewports    = {};
-        viewportState.scissorCount  = {};
-        viewportState.pScissors     = {};
-
-
-        depthStencilState.flags            = {};
-        depthStencilState.depthTestEnable  = VK_TRUE;
-        depthStencilState.depthWriteEnable = VK_TRUE;
-        setValue(depthStencilState.depthCompareOp, VK_COMPARE_OP_LESS_OR_EQUAL);
-        depthStencilState.depthBoundsTestEnable = {};
-        depthStencilState.stencilTestEnable     = {};
-        setValue(depthStencilState.front, VkStencilOpState());
-        setValue(depthStencilState.back, VkStencilOpState());
-        depthStencilState.minDepthBounds = {};
-        depthStencilState.maxDepthBounds = {};
-
-        setValue(multisampleState.rasterizationSamples, VK_SAMPLE_COUNT_1_BIT);
-    }
+    GraphicsPipelineState();
 
     GraphicsPipelineState(const GraphicsPipelineState& src) = default;
 
     // Attach the pointer values of the structures to the internal arrays
-    void update()
-    {
-        colorBlendState.attachmentCount = (uint32_t)blendAttachmentStates.size();
-        colorBlendState.pAttachments    = blendAttachmentStates.data();
+    void update();
 
-        dynamicState.dynamicStateCount = (uint32_t)dynamicStateEnables.size();
-        dynamicState.pDynamicStates    = dynamicStateEnables.data();
-
-        vertexInputState.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescriptions.size());
-        vertexInputState.vertexBindingDescriptionCount   = static_cast<uint32_t>(bindingDescriptions.size());
-        vertexInputState.pVertexBindingDescriptions      = bindingDescriptions.data();
-        vertexInputState.pVertexAttributeDescriptions    = attributeDescriptions.data();
-
-        if (viewports.empty())
-        {
-            viewportState.viewportCount = 1;
-            viewportState.pViewports    = nullptr;
-        }
-        else
-        {
-            viewportState.viewportCount = (uint32_t)viewports.size();
-            viewportState.pViewports    = viewports.data();
-        }
-
-        if (scissors.empty())
-        {
-            viewportState.scissorCount = 1;
-            viewportState.pScissors    = nullptr;
-        }
-        else
-        {
-            viewportState.scissorCount = (uint32_t)scissors.size();
-            viewportState.pScissors    = scissors.data();
-        }
-    }
-
-    static inline VkPipelineColorBlendAttachmentState makePipelineColorBlendAttachmentState(
+    static VkPipelineColorBlendAttachmentState makePipelineColorBlendAttachmentState(
         VkColorComponentFlags colorWriteMask_ = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT |
                                                 VK_COLOR_COMPONENT_A_BIT,
         VkBool32      blendEnable_         = 0,
@@ -145,44 +49,16 @@ struct GraphicsPipelineState
         VkBlendOp     colorBlendOp_        = VK_BLEND_OP_ADD,
         VkBlendFactor srcAlphaBlendFactor_ = VK_BLEND_FACTOR_ZERO,
         VkBlendFactor dstAlphaBlendFactor_ = VK_BLEND_FACTOR_ZERO,
-        VkBlendOp     alphaBlendOp_        = VK_BLEND_OP_ADD)
-    {
-        VkPipelineColorBlendAttachmentState res;
+        VkBlendOp     alphaBlendOp_        = VK_BLEND_OP_ADD);
 
-        res.blendEnable         = blendEnable_;
-        res.srcColorBlendFactor = srcColorBlendFactor_;
-        res.dstColorBlendFactor = dstColorBlendFactor_;
-        res.colorBlendOp        = colorBlendOp_;
-        res.srcAlphaBlendFactor = srcAlphaBlendFactor_;
-        res.dstAlphaBlendFactor = dstAlphaBlendFactor_;
-        res.alphaBlendOp        = alphaBlendOp_;
-        res.colorWriteMask      = colorWriteMask_;
-        return res;
-    }
+    static VkVertexInputBindingDescription makeVertexInputBinding(uint32_t          binding,
+                                                                  uint32_t          stride,
+                                                                  VkVertexInputRate rate = VK_VERTEX_INPUT_RATE_VERTEX);
 
-    static inline VkVertexInputBindingDescription makeVertexInputBinding(uint32_t          binding,
-                                                                         uint32_t          stride,
-                                                                         VkVertexInputRate rate = VK_VERTEX_INPUT_RATE_VERTEX)
-    {
-        VkVertexInputBindingDescription vertexBinding;
-        vertexBinding.binding   = binding;
-        vertexBinding.inputRate = rate;
-        vertexBinding.stride    = stride;
-        return vertexBinding;
-    }
-
-    static inline VkVertexInputAttributeDescription makeVertexInputAttribute(uint32_t location,
-                                                                             uint32_t binding,
-                                                                             VkFormat format,
-                                                                             uint32_t offset)
-    {
-        VkVertexInputAttributeDescription attrib;
-        attrib.binding  = binding;
-        attrib.location = location;
-        attrib.format   = format;
-        attrib.offset   = offset;
-        return attrib;
-    }
+    static VkVertexInputAttributeDescription makeVertexInputAttribute(uint32_t location,
+                                                                      uint32_t binding,
+                                                                      VkFormat format,
+                                                                      uint32_t offset);
 
 
     void clearBlendAttachmentStates() { blendAttachmentStates.clear(); }
@@ -354,48 +230,20 @@ m_pipeline = pipelineGenerator.createPipeline();
 struct GraphicsPipelineGenerator
 {
 public:
-    GraphicsPipelineGenerator(GraphicsPipelineState& pipelineState_)
-        : pipelineState(pipelineState_)
-    {
-        init();
-    }
-
-    GraphicsPipelineGenerator(const GraphicsPipelineGenerator& src)
-        : createInfo(src.createInfo)
-        , device(src.device)
-        , pipelineCache(src.pipelineCache)
-        , pipelineState(src.pipelineState)
-    {
-        init();
-    }
-
-    GraphicsPipelineGenerator(VkDevice                device_,
-                              const VkPipelineLayout& layout,
-                              const VkRenderPass&     renderPass,
-                              GraphicsPipelineState&  pipelineState_)
-        : device(device_)
-        , pipelineState(pipelineState_)
-    {
-        createInfo.layout     = layout;
-        createInfo.renderPass = renderPass;
-        init();
-    }
-
     // For VK_KHR_dynamic_rendering
     using PipelineRenderingCreateInfo = VkPipelineRenderingCreateInfo;
 
+public:
+    GraphicsPipelineGenerator(GraphicsPipelineState& pipelineState_);
+    GraphicsPipelineGenerator(const GraphicsPipelineGenerator& src);
+    GraphicsPipelineGenerator(VkDevice                device_,
+                              const VkPipelineLayout& layout,
+                              const VkRenderPass&     renderPass,
+                              GraphicsPipelineState&  pipelineState_);
     GraphicsPipelineGenerator(VkDevice                           device_,
                               const VkPipelineLayout&            layout,
                               const PipelineRenderingCreateInfo& pipelineRenderingCreateInfo,
-                              GraphicsPipelineState&             pipelineState_)
-        : device(device_)
-        , pipelineState(pipelineState_)
-    {
-        createInfo.layout = layout;
-        setPipelineRenderingCreateInfo(pipelineRenderingCreateInfo);
-        init();
-    }
-
+                              GraphicsPipelineState&             pipelineState_);
     const GraphicsPipelineGenerator& operator=(const GraphicsPipelineGenerator& src)
     {
         device        = src.device;
@@ -406,6 +254,7 @@ public:
         init();
         return *this;
     }
+    ~GraphicsPipelineGenerator() { destroyShaderModules(); }
 
     void setDevice(VkDevice device_) { device = device_; }
 
@@ -415,57 +264,15 @@ public:
         createInfo.pNext      = nullptr;
     }
 
-    void setPipelineRenderingCreateInfo(const PipelineRenderingCreateInfo& pipelineRenderingCreateInfo)
-    {
-        // Deep copy
-        assert(pipelineRenderingCreateInfo.pNext == nullptr);  // Update deep copy if needed.
-        dynamicRenderingInfo = pipelineRenderingCreateInfo;
-        if (dynamicRenderingInfo.colorAttachmentCount != 0)
-        {
-            dynamicRenderingColorFormats.assign(dynamicRenderingInfo.pColorAttachmentFormats,
-                                                dynamicRenderingInfo.pColorAttachmentFormats + dynamicRenderingInfo.colorAttachmentCount);
-            dynamicRenderingInfo.pColorAttachmentFormats = dynamicRenderingColorFormats.data();
-        }
-
-        // Set VkGraphicsPipelineCreateInfo::pNext to point to deep copy of extension struct.
-        // NB: Will have to change if more than 1 extension struct needs to be supported.
-        createInfo.pNext = &dynamicRenderingInfo;
-    }
+    void setPipelineRenderingCreateInfo(const PipelineRenderingCreateInfo& pipelineRenderingCreateInfo);
 
     void setLayout(VkPipelineLayout layout) { createInfo.layout = layout; }
 
-    ~GraphicsPipelineGenerator() { destroyShaderModules(); }
-
-    VkPipelineShaderStageCreateInfo& addShader(const std::string& code, VkShaderStageFlagBits stage, const char* entryPoint = "main")
-    {
-        std::vector<char> v;
-        std::copy(code.begin(), code.end(), std::back_inserter(v));
-        return addShader(v, stage, entryPoint);
-    }
+    VkPipelineShaderStageCreateInfo& addShader(const std::string& code, VkShaderStageFlagBits stage, const char* entryPoint = "main");
 
     template <typename T>
-    VkPipelineShaderStageCreateInfo& addShader(const std::vector<T>& code, VkShaderStageFlagBits stage, const char* entryPoint = "main")
-
-    {
-        VkShaderModuleCreateInfo createInfo{ VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO };
-        createInfo.codeSize = sizeof(T) * code.size();
-        createInfo.pCode    = reinterpret_cast<const uint32_t*>(code.data());
-        VkShaderModule shaderModule;
-        vkCreateShaderModule(device, &createInfo, nullptr, &shaderModule);
-        temporaryModules.push_back(shaderModule);
-
-        return addShader(shaderModule, stage, entryPoint);
-    }
-    VkPipelineShaderStageCreateInfo& addShader(VkShaderModule shaderModule, VkShaderStageFlagBits stage, const char* entryPoint = "main")
-    {
-        VkPipelineShaderStageCreateInfo shaderStage{ VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO };
-        shaderStage.stage  = (VkShaderStageFlagBits)stage;
-        shaderStage.module = shaderModule;
-        shaderStage.pName  = entryPoint;
-
-        shaderStages.push_back(shaderStage);
-        return shaderStages.back();
-    }
+    VkPipelineShaderStageCreateInfo& addShader(const std::vector<T>& code, VkShaderStageFlagBits stage, const char* entryPoint = "main");
+    VkPipelineShaderStageCreateInfo& addShader(VkShaderModule shaderModule, VkShaderStageFlagBits stage, const char* entryPoint = "main");
 
     void clearShaders()
     {
@@ -500,6 +307,7 @@ public:
         }
         temporaryModules.clear();
     }
+
     void update()
     {
         createInfo.stageCount = static_cast<uint32_t>(shaderStages.size());
@@ -507,7 +315,18 @@ public:
         pipelineState.update();
     }
 
-    VkGraphicsPipelineCreateInfo createInfo{ VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO };
+private:
+    void init();
+
+    // Helper to set objects for either C and C++
+    template <class T, class U>
+    void setValue(T& target, const U& val)
+    {
+        target = (T)(val);
+    }
+
+public:
+    VkGraphicsPipelineCreateInfo createInfo = { VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO };
 
 private:
     VkDevice        device;
@@ -518,54 +337,46 @@ private:
     std::vector<VkFormat>                        dynamicRenderingColorFormats;
     GraphicsPipelineState&                       pipelineState;
     PipelineRenderingCreateInfo                  dynamicRenderingInfo = { VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO };
-
-    void init()
-    {
-        createInfo.pRasterizationState = &pipelineState.rasterizationState;
-        createInfo.pInputAssemblyState = &pipelineState.inputAssemblyState;
-        createInfo.pColorBlendState    = &pipelineState.colorBlendState;
-        createInfo.pMultisampleState   = &pipelineState.multisampleState;
-        createInfo.pViewportState      = &pipelineState.viewportState;
-        createInfo.pDepthStencilState  = &pipelineState.depthStencilState;
-        createInfo.pDynamicState       = &pipelineState.dynamicState;
-        createInfo.pVertexInputState   = &pipelineState.vertexInputState;
-    }
-
-    // Helper to set objects for either C and C++
-    template <class T, class U>
-    void setValue(T& target, const U& val)
-    {
-        target = (T)(val);
-    }
 };
 
+template <typename T>
+inline VkPipelineShaderStageCreateInfo& GraphicsPipelineGenerator::addShader(const std::vector<T>& code,
+                                                                             VkShaderStageFlagBits stage,
+                                                                             const char*           entryPoint)
 
-//--------------------------------------------------------------------------------------------------
-/**
-\class nvvk::GraphicsPipelineGeneratorCombined
+{
+    VkShaderModuleCreateInfo createInfo{ VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO };
+    createInfo.codeSize = sizeof(T) * code.size();
+    createInfo.pCode    = reinterpret_cast<const uint32_t*>(code.data());
+    VkShaderModule shaderModule;
+    vkCreateShaderModule(device, &createInfo, nullptr, &shaderModule);
+    temporaryModules.push_back(shaderModule);
 
-In some cases the application may have each state associated to a single pipeline. For convenience,
-nvvk::GraphicsPipelineGeneratorCombined combines both the state and generator into a single object.
-
-Example of usage :
-\code{.cpp}
-    nvvk::GraphicsPipelineGeneratorCombined pipelineGenerator(m_device, m_pipelineLayout, m_renderPass);
-    pipelineGenerator.depthStencilState.setDepthTestEnable(true);
-    pipelineGenerator.rasterizationState.setCullMode(vk::CullModeFlagBits::eNone);
-    pipelineGenerator.addBindingDescription({0, sizeof(Vertex)});
-    pipelineGenerator.addAttributeDescriptions ({
-        {0, 0, vk::Format::eR32G32B32Sfloat, static_cast<uint32_t>(offsetof(Vertex, pos))},
-        {1, 0, vk::Format::eR32G32B32Sfloat, static_cast<uint32_t>(offsetof(Vertex, nrm))},
-        {2, 0, vk::Format::eR32G32B32Sfloat, static_cast<uint32_t>(offsetof(Vertex, col))}});
-
-    pipelineGenerator.addShader(readFile("spv/vert_shader.vert.spv"), VkShaderStageFlagBits::eVertex);
-    pipelineGenerator.addShader(readFile("spv/frag_shader.frag.spv"), VkShaderStageFlagBits::eFragment);
-
-    m_pipeline = pipelineGenerator.createPipeline();
-\endcode
-*/
+    return addShader(shaderModule, stage, entryPoint);
+}
 
 
+//  class nvvk::GraphicsPipelineGeneratorCombined
+//
+//  In some cases the application may have each state associated to a single pipeline. For convenience,
+//  nvvk::GraphicsPipelineGeneratorCombined combines both the state and generator into a single object.
+//
+//  Example of usage :
+//  {
+//      nvvk::GraphicsPipelineGeneratorCombined pipelineGenerator(m_device, m_pipelineLayout, m_renderPass);
+//      pipelineGenerator.depthStencilState.setDepthTestEnable(true);
+//      pipelineGenerator.rasterizationState.setCullMode(vk::CullModeFlagBits::eNone);
+//      pipelineGenerator.addBindingDescription({0, sizeof(Vertex)});
+//      pipelineGenerator.addAttributeDescriptions ({
+//          {0, 0, vk::Format::eR32G32B32Sfloat, static_cast<uint32_t>(offsetof(Vertex, pos))},
+//          {1, 0, vk::Format::eR32G32B32Sfloat, static_cast<uint32_t>(offsetof(Vertex, nrm))},
+//          {2, 0, vk::Format::eR32G32B32Sfloat, static_cast<uint32_t>(offsetof(Vertex, col))}});
+//
+//      pipelineGenerator.addShader(readFile("spv/vert_shader.vert.spv"), VkShaderStageFlagBits::eVertex);
+//      pipelineGenerator.addShader(readFile("spv/frag_shader.frag.spv"), VkShaderStageFlagBits::eFragment);
+//
+//      m_pipeline = pipelineGenerator.createPipeline();
+//  }
 struct GraphicsPipelineGeneratorCombined : public GraphicsPipelineState,
                                            public GraphicsPipelineGenerator
 {

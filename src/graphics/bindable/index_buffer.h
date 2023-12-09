@@ -1,5 +1,4 @@
 #pragma once
-#include <type_traits>
 #include <span>
 
 #include "graphics/bindable/bindable.h"
@@ -27,6 +26,8 @@ public:
 private:
     void bind_impl(Graphics& gfx) noexcept;
     void destroy_impl(Graphics& gfx) noexcept;
+
+    void resetToDefault() noexcept;
 
 protected:
     VkDeviceSize   m_size   = 0;
