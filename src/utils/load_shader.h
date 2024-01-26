@@ -18,7 +18,7 @@ inline void setShaderSearchPath(const std::string& path)
     search_path       = path;
 }
 
-inline std::vector<char> loadShaderCode(const char* path)
+inline std::vector<std::byte> loadShaderCode(const char* path)
 {
     std::string file_path = getFilePathString(path, { getShaderSearchPath() });
 
@@ -28,11 +28,11 @@ inline std::vector<char> loadShaderCode(const char* path)
         throw std::runtime_error(std::string("Failed to open file at path = ") + std::string(path));
     }
 
-    size_t            file_size = (size_t)file.tellg();
-    std::vector<char> buffer(file_size);
+    size_t                 file_size = (size_t)file.tellg();
+    std::vector<std::byte> buffer(file_size);
 
     file.seekg(0);
-    file.read(buffer.data(), file_size);
+    file.read(reinterpret_cast<char*>(buffer.data()), file_size);
 
     return buffer;
 }

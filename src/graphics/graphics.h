@@ -4,6 +4,8 @@
 
 #include <vulkan/vulkan.h>
 
+#include "graphics/vertex.h"
+
 #include "utils/exception.h"
 
 class Window;
@@ -82,4 +84,41 @@ private:
     VkSemaphore     m_curr_sc_img_available_semaphore = VK_NULL_HANDLE;
     VkFence         m_curr_cmd_available_fence        = VK_NULL_HANDLE;
     VkCommandBuffer m_curr_cmd                        = VK_NULL_HANDLE;
+
+private:
+    void createRenderPass();
+    void destroyRenderPass();
+
+    void createFramebuffers();
+    void destroyFramebuffers();
+
+    void createResources();
+    void destroyResources();
+
+    void createDescriptorSet();
+    void destroyDescriptorSet();
+
+    void createPipeline();
+    void destroyPipeline();
+
+private:
+    VkRenderPass m_render_pass = VK_NULL_HANDLE;
+
+    std::vector<VkFramebuffer> m_framebuffers;
+
+    vertex::Layout              m_vertex_layout;
+    VkBuffer                    m_vertex_buffer = VK_NULL_HANDLE;
+    VkDeviceMemory              m_vertex_memory = VK_NULL_HANDLE;
+    VkBuffer                    m_index_buffer  = VK_NULL_HANDLE;
+    VkDeviceMemory              m_index_memory  = VK_NULL_HANDLE;
+    std::vector<VkBuffer>       m_uniform_buffers;
+    std::vector<VkDeviceMemory> m_uniform_memorys;
+    std::vector<void*>          m_uniform_memptrs;
+
+    VkDescriptorPool             m_descriptor_pool       = VK_NULL_HANDLE;
+    VkDescriptorSetLayout        m_descriptor_set_layout = VK_NULL_HANDLE;
+    std::vector<VkDescriptorSet> m_descriptor_sets;
+
+    VkPipelineLayout m_pipeline_layout   = VK_NULL_HANDLE;
+    VkPipeline       m_graphics_pipeline = VK_NULL_HANDLE;
 };
