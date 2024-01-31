@@ -1,5 +1,5 @@
 add_requires("vulkansdk")
-add_requires("glfw")
+add_requires("libsdl")
 add_requires("glm")
 add_requires("spdlog")
 add_requires("stb")
@@ -30,7 +30,7 @@ add_defines(
 )
 
 add_packages("vulkansdk")
-add_packages("glfw")
+add_packages("libsdl")
 add_packages("glm")
 add_packages("spdlog")
 add_packages("stb")

@@ -40,7 +40,7 @@ public:
     void beginFrame();
     void endFrame();
 
-    void drawTestData();
+    void drawTestData(float total_time);
 
 private:
     Window& m_window;

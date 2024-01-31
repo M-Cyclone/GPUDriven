@@ -3,13 +3,7 @@
 #include <sstream>
 #include <string>
 
-#define GLFW_INCLUDE_VULKAN
-#include <GLFW/glfw3.h>
-
-#ifdef PLATFORM_WINDOWS
-#    define GLFW_EXPOSE_NATIVE_WIN32
-#    include <GLFW/glfw3native.h>
-#endif  // PLATFORM_WINDOWS
+#include <SDL_vulkan.h>
 
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEFAULT_ALIGNED_GENTYPES
@@ -205,15 +199,16 @@ Graphics::Graphics(Window& window)
         }
         std::vector<const char*> instance_extensions;
         {
-            uint32_t     glfwExtensionCount = 0;
-            const char** glfwExtensions     = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
-            std::vector  extensions(glfwExtensions, glfwExtensions + glfwExtensionCount);
+            unsigned int instanceExtensionCount = 0;
+            SDL_Vulkan_GetInstanceExtensions(window.getNativeWindow(), &instanceExtensionCount, nullptr);
+            instance_extensions.resize(instanceExtensionCount);
+            SDL_Vulkan_GetInstanceExtensions(window.getNativeWindow(), &instanceExtensionCount, instance_extensions.data());
 
 #ifdef USE_VULKAN_VALIDATION_LAYER
-            extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+            instance_extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
 #endif  // USE_VULKAN_VALIDATION_LAYER
 
-            instance_extensions = std::move(extensions);
+            instance_extensions.erase(std::unique(instance_extensions.begin(), instance_extensions.end()), instance_extensions.end());
         }
 
 #ifdef USE_VULKAN_VALIDATION_LAYER
@@ -267,7 +262,7 @@ Graphics::Graphics(Window& window)
     }
 
     {
-        VK_EXCEPT(glfwCreateWindowSurface(m_instance, m_window.getNativeWindow(), nullptr, &m_surface));
+        assert(SDL_Vulkan_CreateSurface(m_window.getNativeWindow(), m_instance, &m_surface) == SDL_TRUE);
     }
 
     {
@@ -657,11 +652,11 @@ void Graphics::endFrame()
     waitIdle();
 }
 
-void Graphics::drawTestData()
+void Graphics::drawTestData(float total_time)
 {
     {
         UniformBufferObject ubo{};
-        ubo.model       = glm::rotate(glm::mat4(1.0f), (float)glfwGetTime() * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+        ubo.model       = glm::rotate(glm::mat4(1.0f), (float)total_time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
         ubo.view        = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
         ubo.proj        = glm::perspective(glm::radians(45.0f), m_window.getAspectRatio(), 0.1f, 10.0f);
         ubo.proj[1][1] *= -1;
@@ -994,7 +989,6 @@ void Graphics::createResources()
                          m_uniform_buffers[i],
                          m_uniform_memorys[i]);
 
-            
 
             void* data;
             VK_EXCEPT(vkMapMemory(m_device, m_uniform_memorys[i], 0, size, 0, &data));
@@ -1080,7 +1074,6 @@ void Graphics::createDescriptorSet()
 
         vkUpdateDescriptorSets(m_device, 1, &descriptor_write, 0, nullptr);
     }
-
 }
 
 void Graphics::destroyDescriptorSet()
