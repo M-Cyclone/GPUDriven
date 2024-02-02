@@ -13,22 +13,21 @@
 class App
 {
 private:
-    inline static constexpr uint32_t k_max_in_flight_count = 2;
+    inline static constexpr uint32_t kMaxInFlightCount = 2;
 
 public:
     App();
     App(const App&)            = delete;
     App& operator=(const App&) = delete;
 
-    void run();
+    void Run();
 
 private:
-    void update(float delta_time, float total_time);
+    void Update(float deltaTime, float totalTime);
 
 private:
     Window m_window;
 
-    Keyboard m_kbd;
     Keyboard m_kbd;
     Mouse    m_mouse;
 

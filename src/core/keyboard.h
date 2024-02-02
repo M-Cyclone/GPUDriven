@@ -3,6 +3,8 @@
 #include <optional>
 #include <queue>
 
+#include <SDL.h>
+
 class Keyboard
 {
     friend class App;
@@ -11,25 +13,37 @@ public:
     class Event
     {
     public:
-        enum class Type
+        enum class Type : uint8_t
         {
-            Press,
-            Release,
+            Pressed,
+            Released,
         };
 
     private:
-        Type type;
-        int  code;
+        Type         type;
+        uint8_t      repeat;
+        uint16_t     mod; /**< current key modifiers */
+        uint32_t     timestamp;
+        SDL_Keycode  keycode;
+        SDL_Scancode scancode;
 
     public:
-        Event(Type type, int code) noexcept
-            : type(type)
-            , code(code)
+        explicit Event(SDL_KeyboardEvent e) noexcept
+            : type((e.type == SDL_KEYDOWN) ? Type::Pressed : Type::Released)
+            , repeat(e.repeat)
+            , mod(e.keysym.mod)
+            , timestamp(e.timestamp)
+            , keycode(e.keysym.sym)
+            , scancode(e.keysym.scancode)
         {}
 
-        bool isPress() const noexcept { return type == Type::Press; }
-        bool isRelease() const noexcept { return type == Type::Release; }
-        int  getCode() const noexcept { return code; }
+        bool         IsPressed() const noexcept { return type == Type::Pressed; }
+        bool         IsReleased() const noexcept { return type == Type::Released; }
+        uint8_t      GetRepeat() const noexcept { return repeat; }
+        uint16_t     GetKeyModifiers() const noexcept { return mod; }
+        uint32_t     GetTimestamp() const noexcept { return timestamp; }
+        SDL_Keycode  GetKeyCode() const noexcept { return keycode; }
+        SDL_Scancode GetScanCode() const noexcept { return scancode; }
     };
 
 public:
@@ -38,33 +52,24 @@ public:
     Keyboard& operator=(const Keyboard&) = delete;
 
     // key event stuff
-    bool                 isKeyPressed(int keycode) const noexcept;
-    std::optional<Event> readKey() noexcept;
-    bool                 isKeyEmpty() const noexcept;
-    void                 flushKey() noexcept;
+    bool                 IsKeyPressed(SDL_Scancode keycode) const noexcept;
+    bool                 IsKeyEmpty() const noexcept;
+    std::optional<Event> ReadKey() noexcept;
 
-    // char event stuff
-    std::optional<unsigned int> readChar() noexcept;
-    bool                        isCharEmpty() const noexcept;
-    void                        flushChar() noexcept;
-
-    void flush() noexcept;
+    void Flush() noexcept;
 
 private:
-    void onKeyPressed(int keycode) noexcept;
-    void onKeyReleased(int keycode) noexcept;
-    void onChar(unsigned int character) noexcept;
+    void OnKeyPressed(SDL_KeyboardEvent e) noexcept;
+    void OnKeyReleased(SDL_KeyboardEvent e) noexcept;
 
-    void clearState() noexcept;
+    void ClearState() noexcept;
 
     template <typename T>
-    static void trimBuffer(std::queue<T>& buffer) noexcept;
+    static void TrimBuffer(std::queue<T>& buffer) noexcept;
 
 private:
-    static constexpr unsigned int k_max_key_count       = 256u;
-    static constexpr unsigned int k_max_key_event_count = 16u;
+    static constexpr unsigned int kMaxKeyEventCount = 16u;
 
-    std::bitset<k_max_key_count> m_keystates;
-    std::queue<Event>            m_keybuffer;
-    std::queue<unsigned int>     m_charbuffer;
+    std::bitset<SDL_NUM_SCANCODES> m_keystates;
+    std::queue<Event>              m_keybuffer;
 };

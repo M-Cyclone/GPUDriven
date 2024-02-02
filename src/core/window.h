@@ -18,7 +18,7 @@ private:
         ~SDLHelper() noexcept;
 
     public:
-        static SDLHelper& get();
+        static SDLHelper& Get();
 
     private:
         static SDLHelper s_SDL_helper;
@@ -29,12 +29,12 @@ public:
     Window(const Window&)            = delete;
     Window& operator=(const Window&) = delete;
 
-    struct SDL_Window* getNativeWindow() const noexcept { return m_window.get(); }
+    struct SDL_Window* GetNativeWindow() const noexcept { return m_window.get(); }
 
-    float       getAspectRatio() const noexcept { return (float)m_width / (float)m_height; }
-    const char* getTitle() const noexcept { return m_title.c_str(); }
-    uint32_t    getWidth() const noexcept { return m_width; }
-    uint32_t    getHeight() const noexcept { return m_height; }
+    float       GetAspectRatio() const noexcept { return (float)m_width / (float)m_height; }
+    const char* GetTitle() const noexcept { return m_title.c_str(); }
+    uint32_t    GetWidth() const noexcept { return m_width; }
+    uint32_t    GetHeight() const noexcept { return m_height; }
 
 private:
     std::unique_ptr<struct SDL_Window, void (*)(SDL_Window*)> m_window;

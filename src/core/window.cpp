@@ -18,7 +18,7 @@ Window::SDLHelper::~SDLHelper() noexcept
     SDL_Quit();
 }
 
-inline Window::SDLHelper& Window::SDLHelper::get()
+inline Window::SDLHelper& Window::SDLHelper::Get()
 {
     return s_SDL_helper;
 }

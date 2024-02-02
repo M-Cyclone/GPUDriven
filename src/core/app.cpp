@@ -22,7 +22,7 @@ App::App()
     g_init_app = true;
 }
 
-void App::run()
+void App::Run()
 {
     auto start = std::chrono::high_resolution_clock::now();
     auto prev  = start;
@@ -35,13 +35,31 @@ void App::run()
             {
                 switch (e.type)
                 {
-                case SDL_QUIT:
-                {
-                    m_bIsRunning = false;
-                    break;
-                }
                 case SDL_KEYDOWN:
                 {
+                    m_kbd.OnKeyPressed(e.key);
+                    break;
+                }
+                case SDL_KEYUP:
+                {
+                    m_kbd.OnKeyReleased(e.key);
+                    break;
+                }
+                case SDL_MOUSEMOTION:
+                {
+                    // SDL_MouseMotionEvent;
+                    break;
+                }
+                case SDL_MOUSEBUTTONDOWN:
+                case SDL_MOUSEBUTTONUP:
+                {
+                    // SDL_MouseButtonEvent;
+                    break;
+                }
+                case SDL_MOUSEWHEEL:
+                {
+                    // SDL_MouseWheelEvent;
+                    break;
                 }
                 default: break;
                 }
@@ -59,17 +77,22 @@ void App::run()
         float deltaTime = std::chrono::duration<float, std::chrono::seconds::period>(curr - prev).count();
         float totalTime = std::chrono::duration<float, std::chrono::seconds::period>(curr - start).count();
 
-        update(deltaTime, totalTime);
+        Update(deltaTime, totalTime);
 
         prev = curr;
     }
 
-    m_gfx.waitIdle();
+    m_gfx.WaitIdle();
 }
 
-void App::update(float deltaTime, float totalTime)
+void App::Update(float deltaTime, float totalTime)
 {
-    m_gfx.beginFrame();
-    m_gfx.drawTestData(totalTime);
-    m_gfx.endFrame();
+    m_gfx.BeginFrame();
+    m_gfx.DrawTestData(totalTime);
+    m_gfx.EndFrame();
+
+    if (m_kbd.IsKeyPressed(SDL_SCANCODE_ESCAPE))
+    {
+        m_bIsRunning = false;
+    }
 }
